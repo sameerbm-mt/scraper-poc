@@ -55,6 +55,23 @@ Select a row to read the extracted markdown for that page.
 
 ![Page detail with extracted markdown](docs/images/ui-page-detail.png)
 
+### Crawled sites
+
+Every site MyraCrawl has crawled is listed under **Crawled sites** in the header
+(`/sites`), most recently crawled first, with its latest crawl's status, page
+count and age.
+
+![Crawled sites list](docs/images/ui-sites.png)
+
+Select a site to open `/sites/{domain}`. It shows the same job status stats as a
+live crawl, the site profile, and the full paginated **Results** for that crawl.
+When a site has been crawled more than once, each crawl is one click away, and
+`?job=<id>` in the URL links straight to a particular one.
+
+![Site page: crawl history and job status](docs/images/ui-site-status.png)
+
+![Site page: paginated results](docs/images/ui-site-results.png)
+
 <details>
 <summary>Start page</summary>
 
@@ -151,9 +168,10 @@ Open <http://localhost:3000>, enter a URL, and start a crawl.
   appear once the job has finished, so the files you download are complete.
 - Click a row for the markdown preview.
 
-The UI tracks the job you started in the current tab. Refreshing the page starts
-from a blank state; the job itself keeps running and is still reachable through
-the API.
+The home page tracks the job you started in the current tab. Refreshing it
+starts from a blank state, but the job keeps running and is always reachable
+from **Crawled sites** (`/sites`), which lists every crawl found on disk — also
+the ones from earlier sessions.
 
 ## Configuration
 
@@ -195,10 +213,17 @@ Interactive docs are served at <http://localhost:8000/docs>.
 | `GET` | `/api/jobs/{job_id}/results/{index}` | One page including markdown |
 | `GET` | `/api/jobs/{job_id}/export?format=jsonl\|csv` | Downloads the JSONL or CSV |
 | `GET` | `/api/jobs/{job_id}/site` | The site profile for this job's website |
-| `GET` | `/api/sites/{domain}` | The site profile by domain |
+| `GET` | `/api/sites` | Every crawled website with its latest crawl, most recent first |
+| `GET` | `/api/sites/{domain}/jobs` | Every crawl of one website, newest first |
+| `GET` | `/api/sites/{domain}` | The site profile by domain (needs MongoDB) |
 | `GET` | `/health` | Liveness |
 
 A job's `status` moves `queued` → `running` → `completed` or `failed`.
+
+`/api/sites` and `/api/sites/{domain}/jobs` are built from `backend/data/`, so
+they need neither MongoDB nor a live Redis record. A job whose Redis record has
+expired is still served by every `/api/jobs/{job_id}` route from its files; see
+[Known limits](#known-limits) for what that fallback cannot recover.
 
 ```bash
 curl -X POST localhost:8000/api/crawl \
@@ -373,15 +398,17 @@ fine without one installed.
 
 ```bash
 cd backend
-uv run pytest                 # 147 tests
+uv run pytest                 # 168 tests
 ```
 
 Covers the pipelines (`ExtractPipeline`, `ArchivePipeline`, `DedupePipeline`,
 `CsvPipeline`, the `max_pages` cap, markdown normalisation), the extraction
 fallback ladder, the spider (URL normalisation, link filtering, no depth limit,
-crawl priority, structured fields) and the extractors (page classification,
+crawl priority, structured fields), the extractors (page classification,
 contacts, phone normalisation, services, team from both JSON-LD and markup,
-organisation, and the site profile merge).
+organisation, and the site profile merge), and the on-disk catalog behind the
+sites pages (scanning, path-traversal rejection, stats from CSV or JSONL, and
+the routes' fallback for jobs Redis has forgotten).
 
 The frontend is checked with `npm run lint` and `npx tsc --noEmit`.
 
@@ -410,7 +437,8 @@ scraper-poc/
 ├── docs/images/                # README diagrams and screenshots
 ├── backend/
 │   ├── app/                    # FastAPI: main, api/routes, schemas, config,
-│   │                           #   job_store (Redis), mongo (reads), urls
+│   │                           #   job_store (Redis), mongo (reads), urls,
+│   │                           #   catalog (scans data/ for the sites pages)
 │   ├── worker/                 # ARQ: WorkerSettings, run_crawl
 │   ├── crawler/                # Scrapy: spiders/site_spider, pipelines, items,
 │   │                           #   content (extraction ladder), extractors,
@@ -420,10 +448,12 @@ scraper-poc/
 │   └── tests/
 └── frontend/                   # Next.js App Router + shadcn/ui
     └── src/
-        ├── app/page.tsx        # the single page: polling and state
-        ├── components/         # crawl-form, job-status-card, site-profile-card,
-        │                       #   results-table, page-detail-sheet, site-header
-        └── lib/api.ts          # typed API client
+        ├── app/page.tsx        # home: start a crawl and follow it live
+        ├── app/sites/          # /sites (crawled sites) and /sites/[domain]
+        ├── components/         # crawl-form, job-status-card, job-results,
+        │                       #   results-table, page-detail-sheet, sites-table,
+        │                       #   crawl-history, site-profile-card, site-header
+        └── lib/                # api.ts (typed client), use-job-polling, format
 ```
 
 ## Troubleshooting
@@ -441,6 +471,10 @@ start a new crawl.
 `NEXT_PUBLIC_API_URL` points somewhere else. If the browser reports a CORS error
 instead, add the UI's origin to `CORS_ORIGINS`.
 
+**A new page or endpoint returns 404 (for example `/api/sites`).** The API process
+is still running old code. Restart `uvicorn`; on Windows, `--reload` can miss a
+change, and a second `uvicorn` left running on the same port can keep answering.
+
 **"Crawl produced no pages".** The crawl exited cleanly but stored nothing: the
 site blocked the user agent, `robots.txt` disallows the start URL, or every page
 extracted empty. The error on the job carries the tail of Scrapy's log.
@@ -457,7 +491,12 @@ This is a POC, so a few things are deliberately simple:
   querying Mongo. Fine for hundreds of pages, not for hundreds of thousands —
   the `pages` collection is already indexed for it when that matters.
 - Job records live in Redis with a 7-day TTL; the files and Mongo documents are
-  never cleaned up, so a job's Redis record can expire while its data remains.
+  never cleaned up. Once a record expires, the API rebuilds the job from its
+  files (and the Mongo `jobs` document, when Mongo is up), so results, exports
+  and the sites pages keep working. Two things cannot be recovered: how many
+  requests failed (`pages_failed` reads 0), and whether a crawl that stored pages
+  was interrupted — it is reported as completed. Without Mongo the page cap and
+  JS setting of an old crawl are unknown too.
 - Nothing detects a worker that died mid-crawl, so that job stays `running`.
 - Team extraction is heuristic. It reads schema.org reliably and common card
   markup well, but an unusual layout will yield nothing rather than guess.

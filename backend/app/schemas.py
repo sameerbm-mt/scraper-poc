@@ -100,6 +100,19 @@ class ResultsPage(BaseModel):
     total_pages: int
 
 
+class SiteSummary(BaseModel):
+    """One row of GET /api/sites: a crawled website and its most recent crawl."""
+
+    domain: str
+    # From the Mongo site profile when there is one; empty otherwise.
+    name: str = ""
+    job_count: int
+    latest_job_id: str
+    latest_status: JobStatus
+    pages: int = 0
+    last_crawled_at: datetime | None = None
+
+
 class SocialLink(BaseModel):
     network: str
     url: str

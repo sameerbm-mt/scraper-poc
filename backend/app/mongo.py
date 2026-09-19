@@ -53,6 +53,33 @@ class MongoReader:
         document["domain"] = document.pop("_id")
         return document
 
+    def find_sites(self, domains: list[str]) -> dict[str, dict[str, Any]]:
+        """Profile headline fields for several sites in one round trip."""
+        return self._find_many(
+            SITES, domains, {"name": 1, "description": 1}, "find_sites"
+        )
+
+    def find_jobs(self, job_ids: list[str]) -> dict[str, dict[str, Any]]:
+        """The request parameters and timestamps recorded for several jobs."""
+        return self._find_many(
+            JOBS,
+            job_ids,
+            {"start_url": 1, "max_pages": 1, "use_js": 1, "started_at": 1, "finished_at": 1},
+            "find_jobs",
+        )
+
+    def _find_many(
+        self, collection: str, ids: list[str], projection: dict[str, int], label: str
+    ) -> dict[str, dict[str, Any]]:
+        if not self.available or not ids:
+            return {}
+        try:
+            cursor = self._db[collection].find({"_id": {"$in": ids}}, projection)
+            return {document["_id"]: document for document in cursor}
+        except PyMongoError as exc:
+            logger.error("Mongo %s failed: %s", label, exc)
+            return {}
+
     def close(self) -> None:
         if self._client is not None:
             self._client.close()

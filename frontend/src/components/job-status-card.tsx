@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { Download } from "lucide-react";
 
-import { Badge } from "@/components/ui/badge";
+import { StatusBadge } from "@/components/status-badge";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -13,22 +13,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
-import {
-  exportUrl,
-  type ExportFormat,
-  type JobState,
-  type JobStatus,
-} from "@/lib/api";
-
-const STATUS_VARIANT: Record<
-  JobStatus,
-  "default" | "secondary" | "destructive" | "outline"
-> = {
-  queued: "outline",
-  running: "secondary",
-  completed: "default",
-  failed: "destructive",
-};
+import { exportUrl, type ExportFormat, type JobState } from "@/lib/api";
 
 interface JobStatusCardProps {
   job: JobState;
@@ -92,7 +77,7 @@ export function JobStatusCard({ job }: JobStatusCardProps) {
       <CardHeader>
         <CardTitle className="flex flex-wrap items-center gap-2 text-lg sm:text-xl">
           Job status
-          <Badge variant={STATUS_VARIANT[job.status]}>{job.status}</Badge>
+          <StatusBadge status={job.status} />
         </CardTitle>
         <CardDescription className="break-anywhere">
           {job.url} · {capped ? `up to ${job.max_pages} pages` : "whole site"}

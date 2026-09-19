@@ -1,5 +1,6 @@
 import { Radar } from "lucide-react";
 
+import { SiteNav } from "@/components/site-nav";
 import { API_URL } from "@/lib/api";
 
 /** Orange mark + wordmark, echoing the Myra Technolabs brand. */
@@ -17,10 +18,10 @@ export function SiteHeader() {
   return (
     <header className="border-border/70 surface-panel sticky top-0 z-40 border-b">
       <div
-        className="mx-auto flex w-full max-w-6xl items-center justify-between gap-3 px-4 py-3 sm:px-6"
+        className="mx-auto flex w-full max-w-6xl flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3 sm:px-6"
         style={{ paddingTop: "max(0.75rem, env(safe-area-inset-top, 0px))" }}
       >
-        <div className="flex min-w-0 items-center gap-3">
+        <div className="mr-auto flex min-w-0 items-center gap-3">
           <BrandMark className="size-9 shrink-0" />
           <div className="min-w-0 leading-tight">
             <p className="truncate text-base font-semibold tracking-tight sm:text-lg">
@@ -31,6 +32,9 @@ export function SiteHeader() {
             </p>
           </div>
         </div>
+
+        {/* Its own row on phones; between the brand and the docs link from sm up. */}
+        <SiteNav className="order-last w-full sm:order-none sm:w-auto" />
 
         <a
           href={`${API_URL}/docs`}

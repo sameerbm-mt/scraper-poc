@@ -13,6 +13,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import FileResponse
 from starlette.concurrency import run_in_threadpool
 
+from app import catalog
 from app.config import Settings, get_settings
 from app.job_store import JobStore
 from app.mongo import get_mongo
@@ -24,6 +25,7 @@ from app.schemas import (
     PageSummary,
     ResultsPage,
     SiteProfile,
+    SiteSummary,
 )
 
 router = APIRouter(prefix="/api", tags=["crawl"])
@@ -68,11 +70,8 @@ async def start_crawl(
 
 
 @router.get("/jobs/{job_id}", response_model=JobState)
-async def get_job(job_id: str, store: JobStoreDep) -> JobState:
-    state = await store.get(job_id)
-    if state is None:
-        raise HTTPException(status_code=404, detail="Job not found")
-    return state
+async def get_job(job_id: str, store: JobStoreDep, settings: SettingsDep) -> JobState:
+    return await _require_job(job_id, store, settings)
 
 
 @router.get("/jobs/{job_id}/results", response_model=ResultsPage)
@@ -84,7 +83,7 @@ async def get_results(
     size: Annotated[int, Query(ge=1, le=100)] = 20,
 ) -> ResultsPage:
     """Paginated page list. Markdown is omitted here — see the detail route."""
-    job = await _require_job(job_id, store)
+    job = await _require_job(job_id, store, settings)
     path = settings.job_results_path(job.site, job_id)
 
     total = 0
@@ -112,7 +111,7 @@ async def get_result(
     settings: SettingsDep,
 ) -> PageDetail:
     """A single crawled page, including its markdown body."""
-    job = await _require_job(job_id, store)
+    job = await _require_job(job_id, store, settings)
     if index < 0:
         raise HTTPException(status_code=404, detail="Result not found")
 
@@ -135,7 +134,7 @@ async def export_results(
     format: Annotated[str, Query(pattern="^(jsonl|csv)$")] = "jsonl",
 ) -> FileResponse:
     """Download this job's pages.jsonl (full) or pages.csv (flat, no markdown)."""
-    job = await _require_job(job_id, store)
+    job = await _require_job(job_id, store, settings)
     if format == "csv":
         path = settings.job_csv_path(job.site, job_id)
         media_type = "text/csv"
@@ -153,10 +152,45 @@ async def export_results(
 
 
 @router.get("/jobs/{job_id}/site", response_model=SiteProfile)
-async def get_job_site(job_id: str, store: JobStoreDep) -> SiteProfile:
+async def get_job_site(
+    job_id: str, store: JobStoreDep, settings: SettingsDep
+) -> SiteProfile:
     """The website profile Mongo holds for this job's site."""
-    job = await _require_job(job_id, store)
+    job = await _require_job(job_id, store, settings)
     return await _site_profile(job.site)
+
+
+@router.get("/sites", response_model=list[SiteSummary])
+async def list_sites(store: JobStoreDep, settings: SettingsDep) -> list[SiteSummary]:
+    """Every crawled website, most recently crawled first."""
+    by_site = await run_in_threadpool(catalog.scan, settings.data_dir)
+    ordered = sorted(by_site.items(), key=lambda item: item[1][0].activity, reverse=True)
+    headlines = await run_in_threadpool(_site_headlines, [site for site, _ in ordered])
+    states = await _job_states([crawls[0] for _, crawls in ordered], store)
+
+    return [
+        SiteSummary(
+            domain=site,
+            name=str(headlines.get(site, {}).get("name") or ""),
+            job_count=len(crawls),
+            latest_job_id=state.job_id,
+            latest_status=state.status,
+            pages=state.pages_crawled,
+            last_crawled_at=crawls[0].activity,
+        )
+        for (site, crawls), state in zip(ordered, states)
+    ]
+
+
+@router.get("/sites/{domain}/jobs", response_model=list[JobState])
+async def list_site_jobs(
+    domain: str, store: JobStoreDep, settings: SettingsDep
+) -> list[JobState]:
+    """Every crawl of one website, newest first."""
+    crawls = await run_in_threadpool(catalog.scan_site, settings.data_dir, domain.lower())
+    if not crawls:
+        raise HTTPException(status_code=404, detail=f"No crawls stored for {domain}")
+    return await _job_states(crawls, store)
 
 
 @router.get("/sites/{domain}", response_model=SiteProfile)
@@ -176,11 +210,43 @@ async def _site_profile(domain: str) -> SiteProfile:
     return SiteProfile.model_validate(document)
 
 
-async def _require_job(job_id: str, store: JobStore) -> JobState:
+async def _require_job(job_id: str, store: JobStore, settings: Settings) -> JobState:
     job = await store.get(job_id)
+    if job is None:
+        # Redis forgets a job after its TTL; the files (and so the results) remain.
+        crawl = await run_in_threadpool(catalog.find, settings.data_dir, job_id)
+        if crawl is not None:
+            recorded = await run_in_threadpool(_recorded_jobs, [job_id])
+            job = catalog.state_from_disk(crawl, recorded.get(job_id))
     if job is None:
         raise HTTPException(status_code=404, detail="Job not found")
     return job
+
+
+async def _job_states(crawls: list[catalog.Crawl], store: JobStore) -> list[JobState]:
+    """Redis is authoritative for a job it still remembers; the files cover the rest."""
+    remembered = [await store.get(crawl.files.job_id) for crawl in crawls]
+    forgotten = [
+        crawl.files.job_id
+        for crawl, state in zip(crawls, remembered)
+        if state is None
+    ]
+    recorded = await run_in_threadpool(_recorded_jobs, forgotten)
+    return [
+        state
+        if state is not None
+        else catalog.state_from_disk(crawl, recorded.get(crawl.files.job_id))
+        for crawl, state in zip(crawls, remembered)
+    ]
+
+
+def _recorded_jobs(job_ids: list[str]) -> dict[str, dict[str, Any]]:
+    """Mongo's `jobs` documents, when Mongo is up. Blocking, so run in a thread."""
+    return get_mongo().find_jobs(job_ids) if job_ids else {}
+
+
+def _site_headlines(domains: list[str]) -> dict[str, dict[str, Any]]:
+    return get_mongo().find_sites(domains) if domains else {}
 
 
 def _iter_records(path: Path) -> Iterator[tuple[int, dict[str, Any]]]:

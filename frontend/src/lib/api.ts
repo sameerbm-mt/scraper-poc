@@ -74,6 +74,18 @@ export interface SiteProfile {
   last_crawled_at: string | null;
 }
 
+/** One row of the crawled-sites list: a website and its most recent crawl. */
+export interface SiteSummary {
+  domain: string;
+  /** From the Mongo site profile; empty when there is none. */
+  name: string;
+  job_count: number;
+  latest_job_id: string;
+  latest_status: JobStatus;
+  pages: number;
+  last_crawled_at: string | null;
+}
+
 export interface PageSummary {
   index: number;
   url: string;
@@ -108,6 +120,10 @@ export class ApiError extends Error {
     super(message);
     this.name = "ApiError";
   }
+}
+
+export function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : "Something went wrong";
 }
 
 interface FastApiValidationDetail {
@@ -194,6 +210,21 @@ export function exportUrl(jobId: string, format: ExportFormat = "jsonl"): string
 /** The site profile for a job. 404 simply means the crawl stored none yet. */
 export function getJobSite(jobId: string): Promise<SiteProfile> {
   return request<SiteProfile>(`/api/jobs/${jobId}/site`);
+}
+
+/** Every crawled website, most recently crawled first. */
+export function getSites(): Promise<SiteSummary[]> {
+  return request<SiteSummary[]>("/api/sites");
+}
+
+/** Every crawl of one website, newest first. 404 when it was never crawled. */
+export function getSiteJobs(domain: string): Promise<JobState[]> {
+  return request<JobState[]>(`/api/sites/${encodeURIComponent(domain)}/jobs`);
+}
+
+/** The stored profile for a domain. 404 or 503 just means there is none to show. */
+export function getSiteProfile(domain: string): Promise<SiteProfile> {
+  return request<SiteProfile>(`/api/sites/${encodeURIComponent(domain)}`);
 }
 
 export const TERMINAL_STATUSES: readonly JobStatus[] = ["completed", "failed"];

@@ -20,10 +20,13 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import type { PageSummary, ResultsPage } from "@/lib/api";
+import { pluralize } from "@/lib/format";
 
 interface ResultsTableProps {
   results: ResultsPage;
   loading: boolean;
+  /** Set when the current page failed to load. */
+  error?: string | null;
   onSelect: (item: PageSummary) => void;
   onPageChange: (page: number) => void;
 }
@@ -35,6 +38,7 @@ function statusVariant(code: number | null): "secondary" | "destructive" {
 export function ResultsTable({
   results,
   loading,
+  error = null,
   onSelect,
   onPageChange,
 }: ResultsTableProps) {
@@ -50,7 +54,7 @@ export function ResultsTable({
         <CardDescription className="text-pretty">
           {total === 0
             ? "No pages yet."
-            : `Showing ${firstRow}–${lastRow} of ${total} pages. Select a row to read the markdown.`}
+            : `Showing ${firstRow}–${lastRow} of ${pluralize(total, "page")}. Select a row to read the markdown.`}
         </CardDescription>
       </CardHeader>
 
@@ -58,7 +62,7 @@ export function ResultsTable({
         {empty ? (
           <div className="text-muted-foreground flex flex-col items-center gap-2 py-10 text-center text-sm">
             <FileText className="size-6 opacity-40" />
-            {loading ? "Loading…" : "Nothing crawled yet."}
+            {error ?? (loading ? "Loading…" : "Nothing crawled yet.")}
           </div>
         ) : (
           <>

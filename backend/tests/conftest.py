@@ -54,3 +54,43 @@ def blind_trafilatura(monkeypatch):
         for name, fn in content.STRATEGIES
     )
     monkeypatch.setattr(content, "STRATEGIES", blinded)
+
+
+@pytest.fixture
+def make_crawl(tmp_path):
+    """Lay out ``tmp_path/{site}/{job_id}`` the way the pipelines write it.
+
+    ``pages`` is a list of ``(url, crawled_at)``. Returns the job folder.
+    """
+    import csv
+    import json
+
+    def _make(site, job_id, pages, *, with_csv=True):
+        folder = tmp_path / site / job_id
+        folder.mkdir(parents=True)
+        records = [
+            {
+                "url": url,
+                "status_code": 200,
+                "depth": index,
+                "title": f"Page {index}",
+                "word_count": 100 + index,
+                "content_hash": f"hash{index}",
+                "crawled_at": crawled_at,
+                "markdown": f"# Page {index}\n\nBody text {index}.",
+            }
+            for index, (url, crawled_at) in enumerate(pages)
+        ]
+        with (folder / "pages.jsonl").open("w", encoding="utf-8") as handle:
+            for record in records:
+                handle.write(json.dumps(record) + "\n")
+        if with_csv:
+            with (folder / "pages.csv").open("w", encoding="utf-8", newline="") as handle:
+                writer = csv.DictWriter(
+                    handle, fieldnames=["url", "depth", "crawled_at"], extrasaction="ignore"
+                )
+                writer.writeheader()
+                writer.writerows(records)
+        return folder
+
+    return _make
