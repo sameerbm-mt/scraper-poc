@@ -1,0 +1,24 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.scrapy/
+
+# Crawl output
+backend/data/*
+!backend/data/.gitkeep
+
+# Env
+.env
+.env.local
+
+# Node / Next
+node_modules/
+.next/
+out/
+next-env.d.ts
+*.tsbuildinfo
+
+# OS
+.DS_Store
