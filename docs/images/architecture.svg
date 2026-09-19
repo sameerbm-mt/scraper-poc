@@ -1,0 +1,175 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 740" width="1200" height="740" role="img" aria-labelledby="t d" font-family="'Segoe UI', Helvetica, Arial, sans-serif">
+  <title id="t">MyraCrawl system architecture</title>
+  <desc id="d">A Next.js UI calls a FastAPI service, which enqueues crawl jobs in Redis. An ARQ worker dequeues each job and spawns a Scrapy subprocess. Scrapy writes pages to local JSONL and CSV files and to MongoDB, and reports live progress counters back to Redis. The API reads results from the files, the site profile from MongoDB, and job status from Redis.</desc>
+
+  <defs>
+    <filter id="shadow" x="-5%" y="-5%" width="110%" height="120%">
+      <feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="#1f1f22" flood-opacity="0.08"/>
+    </filter>
+    <marker id="arrow-gray" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M1 1 L9 5 L1 9 Z" fill="#6b6f76"/>
+    </marker>
+    <marker id="arrow-orange" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M1 1 L9 5 L1 9 Z" fill="#f05a2a"/>
+    </marker>
+    <marker id="arrow-indigo" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M1 1 L9 5 L1 9 Z" fill="#6971dd"/>
+    </marker>
+  </defs>
+
+  <!-- canvas -->
+  <rect x="0.5" y="0.5" width="1199" height="739" rx="16" fill="#ffffff" stroke="#e6e7ec"/>
+
+  <!-- header -->
+  <rect x="40" y="28" width="32" height="32" rx="9" fill="#f05a2a"/>
+  <circle cx="56" cy="44" r="9" fill="none" stroke="#fff" stroke-width="2"/>
+  <circle cx="56" cy="44" r="4" fill="none" stroke="#fff" stroke-width="2"/>
+  <circle cx="56" cy="44" r="1.2" fill="#fff"/>
+  <text x="86" y="49" font-size="22" font-weight="700" fill="#1f1f22">MyraCrawl</text>
+  <text x="86" y="68" font-size="12.5" fill="#6b6f76">System architecture · FastAPI + ARQ + Scrapy</text>
+
+  <!-- lane dividers and labels -->
+  <line x1="40" y1="272" x2="1160" y2="272" stroke="#eceef2" stroke-dasharray="4 5"/>
+  <line x1="40" y1="500" x2="1160" y2="500" stroke="#eceef2" stroke-dasharray="4 5"/>
+  <g font-size="10.5" font-weight="600" fill="#9a9ea8" letter-spacing="1.6">
+    <text x="40" y="106">CONTROL PLANE</text>
+    <text x="40" y="296">CRAWL</text>
+    <text x="40" y="524">PERSISTENCE</text>
+  </g>
+
+  <!-- ============ arrows (drawn first, boxes sit on top) ============ -->
+  <!-- UI <-> API -->
+  <line x1="272" y1="175" x2="338" y2="175" stroke="#6b6f76" stroke-width="2" marker-start="url(#arrow-gray)" marker-end="url(#arrow-gray)"/>
+  <text x="305" y="164" font-size="11" fill="#6b6f76" text-anchor="middle">HTTP</text>
+  <text x="305" y="196" font-size="10" fill="#9a9ea8" text-anchor="middle">poll 2 s</text>
+
+  <!-- API <-> Redis -->
+  <line x1="572" y1="175" x2="638" y2="175" stroke="#6b6f76" stroke-width="2" marker-start="url(#arrow-gray)" marker-end="url(#arrow-gray)"/>
+  <text x="605" y="164" font-size="11" fill="#6b6f76" text-anchor="middle">enqueue</text>
+  <text x="605" y="196" font-size="10" fill="#9a9ea8" text-anchor="middle">status</text>
+
+  <!-- Redis -> Worker -->
+  <line x1="872" y1="175" x2="938" y2="175" stroke="#6b6f76" stroke-width="2" marker-end="url(#arrow-gray)"/>
+  <text x="905" y="164" font-size="11" fill="#6b6f76" text-anchor="middle">dequeue</text>
+
+  <!-- Worker -> Scrapy (spawn) -->
+  <line x1="1050" y1="232" x2="1050" y2="318" stroke="#f05a2a" stroke-width="2" marker-end="url(#arrow-orange)"/>
+  <text x="1062" y="302" font-size="11" fill="#c8410f">spawn subprocess</text>
+
+  <!-- Scrapy -> Redis (live progress) -->
+  <line x1="755" y1="318" x2="755" y2="232" stroke="#f05a2a" stroke-width="2" stroke-dasharray="6 5" marker-end="url(#arrow-orange)"/>
+  <text x="767" y="302" font-size="11" fill="#c8410f">HINCRBY pages_crawled</text>
+
+  <!-- Scrapy -> Files / Mongo (writes) -->
+  <line x1="755" y1="452" x2="755" y2="538" stroke="#f05a2a" stroke-width="2" marker-end="url(#arrow-orange)"/>
+  <text x="767" y="490" font-size="11" fill="#c8410f">append + flush</text>
+  <line x1="1040" y1="452" x2="1040" y2="538" stroke="#f05a2a" stroke-width="2" marker-end="url(#arrow-orange)"/>
+  <text x="1052" y="490" font-size="11" fill="#c8410f">upsert per page</text>
+
+  <!-- API reads: files -->
+  <path d="M500 232 V600 H638" fill="none" stroke="#6971dd" stroke-width="2" stroke-dasharray="6 5" marker-end="url(#arrow-indigo)"/>
+  <text x="512" y="590" font-size="11" fill="#4d55c0">results · export</text>
+
+  <!-- API reads: Mongo (site profile) -->
+  <path d="M455 232 V690 H1040 V652" fill="none" stroke="#6971dd" stroke-width="2" stroke-dasharray="6 5" marker-end="url(#arrow-indigo)"/>
+  <text x="748" y="710" font-size="11" fill="#4d55c0" text-anchor="middle">site profile · GET /api/sites/{domain}</text>
+
+  <!-- ============ nodes ============ -->
+  <!-- Next.js UI -->
+  <g filter="url(#shadow)">
+    <rect x="40" y="120" width="232" height="112" rx="14" fill="#fff" stroke="#e2e3e8"/>
+  </g>
+  <circle cx="60" cy="142" r="4" fill="#3b3f4a"/>
+  <text x="70" y="146" font-size="10" font-weight="600" fill="#3b3f4a" letter-spacing="1.2">FRONTEND · :3000</text>
+  <text x="58" y="174" font-size="17" font-weight="700" fill="#1f1f22">Next.js UI</text>
+  <text x="58" y="196" font-size="12" fill="#6b6f76">App Router · React 19</text>
+  <text x="58" y="214" font-size="12" fill="#6b6f76">shadcn/ui · live job status</text>
+
+  <!-- FastAPI -->
+  <g filter="url(#shadow)">
+    <rect x="340" y="120" width="232" height="112" rx="14" fill="#fff" stroke="#e2e3e8"/>
+  </g>
+  <circle cx="360" cy="142" r="4" fill="#6971dd"/>
+  <text x="370" y="146" font-size="10" font-weight="600" fill="#4d55c0" letter-spacing="1.2">API · :8000</text>
+  <text x="358" y="174" font-size="17" font-weight="700" fill="#1f1f22">FastAPI</text>
+  <text x="358" y="196" font-size="12" fill="#6b6f76">Pydantic v2 · CORS</text>
+  <text x="358" y="214" font-size="12" fill="#6b6f76">jobs · results · export</text>
+
+  <!-- Redis -->
+  <g filter="url(#shadow)">
+    <rect x="640" y="120" width="232" height="112" rx="14" fill="#fff" stroke="#e2e3e8"/>
+  </g>
+  <circle cx="660" cy="142" r="4" fill="#d6453d"/>
+  <text x="670" y="146" font-size="10" font-weight="600" fill="#b8352e" letter-spacing="1.2">QUEUE &amp; STATE · :6379</text>
+  <text x="658" y="174" font-size="17" font-weight="700" fill="#1f1f22">Redis</text>
+  <text x="658" y="196" font-size="12" fill="#6b6f76">ARQ queue</text>
+  <text x="658" y="214" font-size="12" fill="#6b6f76">job hash · 7-day TTL</text>
+
+  <!-- ARQ worker -->
+  <g filter="url(#shadow)">
+    <rect x="940" y="120" width="220" height="112" rx="14" fill="#fff" stroke="#e2e3e8"/>
+  </g>
+  <circle cx="960" cy="142" r="4" fill="#d98a0b"/>
+  <text x="970" y="146" font-size="10" font-weight="600" fill="#a86a05" letter-spacing="1.2">WORKER</text>
+  <text x="958" y="174" font-size="17" font-weight="700" fill="#1f1f22">ARQ worker</text>
+  <text x="958" y="196" font-size="12" fill="#6b6f76">run_crawl · 2 jobs at once</text>
+  <text x="958" y="214" font-size="12" fill="#6b6f76">marks running / done / failed</text>
+
+  <!-- Scrapy -->
+  <g filter="url(#shadow)">
+    <rect x="640" y="320" width="520" height="130" rx="14" fill="#fff" stroke="#f3c2b0"/>
+  </g>
+  <circle cx="660" cy="342" r="4" fill="#f05a2a"/>
+  <text x="670" y="346" font-size="10" font-weight="600" fill="#c8410f" letter-spacing="1.2">CRAWLER · SEPARATE PROCESS</text>
+  <text x="658" y="372" font-size="17" font-weight="700" fill="#1f1f22">Scrapy · site spider</text>
+  <text x="658" y="392" font-size="12" fill="#6b6f76">Breadth-first · robots.txt · AutoThrottle · optional Playwright</text>
+  <g font-size="11" font-weight="500" fill="#c8410f" text-anchor="middle">
+    <rect x="660" y="410" width="60" height="24" rx="12" fill="#fff1ec" stroke="#f6c9b8"/><text x="690" y="426">extract</text>
+    <rect x="730" y="410" width="60" height="24" rx="12" fill="#fff1ec" stroke="#f6c9b8"/><text x="760" y="426">archive</text>
+    <rect x="800" y="410" width="60" height="24" rx="12" fill="#fff1ec" stroke="#f6c9b8"/><text x="830" y="426">dedupe</text>
+    <rect x="870" y="410" width="60" height="24" rx="12" fill="#fff1ec" stroke="#f6c9b8"/><text x="900" y="426">jsonl</text>
+    <rect x="940" y="410" width="60" height="24" rx="12" fill="#fff1ec" stroke="#f6c9b8"/><text x="970" y="426">csv</text>
+    <rect x="1010" y="410" width="60" height="24" rx="12" fill="#fff1ec" stroke="#f6c9b8"/><text x="1040" y="426">mongo</text>
+    <rect x="1080" y="410" width="60" height="24" rx="12" fill="#fff1ec" stroke="#f6c9b8"/><text x="1110" y="426">progress</text>
+  </g>
+
+  <!-- Local files -->
+  <g filter="url(#shadow)">
+    <rect x="640" y="540" width="232" height="110" rx="14" fill="#fff" stroke="#e2e3e8"/>
+  </g>
+  <circle cx="660" cy="562" r="4" fill="#3f7fbf"/>
+  <text x="670" y="566" font-size="10" font-weight="600" fill="#2f6299" letter-spacing="1.2">FILES</text>
+  <text x="658" y="594" font-size="17" font-weight="700" fill="#1f1f22">Local disk</text>
+  <text x="658" y="616" font-size="12" fill="#6b6f76" font-family="'Cascadia Mono', Consolas, 'Courier New', monospace">data/{site}/{job_id}/</text>
+  <text x="658" y="634" font-size="12" fill="#6b6f76">pages.jsonl · pages.csv</text>
+
+  <!-- MongoDB -->
+  <g filter="url(#shadow)">
+    <rect x="920" y="540" width="240" height="110" rx="14" fill="#fff" stroke="#e2e3e8"/>
+  </g>
+  <circle cx="940" cy="562" r="4" fill="#2f9e63"/>
+  <text x="950" y="566" font-size="10" font-weight="600" fill="#217a4c" letter-spacing="1.2">DATABASE · OPTIONAL</text>
+  <text x="938" y="594" font-size="17" font-weight="700" fill="#1f1f22">MongoDB</text>
+  <text x="938" y="616" font-size="12" fill="#6b6f76" font-family="'Cascadia Mono', Consolas, 'Courier New', monospace">mt-scrapy-crawl</text>
+  <text x="938" y="634" font-size="12" fill="#6b6f76">pages · sites · jobs</text>
+
+  <!-- why a subprocess -->
+  <rect x="40" y="322" width="360" height="128" rx="14" fill="#fff8f5" stroke="#f6c9b8"/>
+  <text x="60" y="350" font-size="12.5" font-weight="700" fill="#c8410f">Why Scrapy is a subprocess</text>
+  <text x="60" y="372" font-size="11.5" fill="#6b6f76">Scrapy runs on the Twisted reactor, which cannot be</text>
+  <text x="60" y="389" font-size="11.5" fill="#6b6f76">restarted inside one process. Each job gets a fresh</text>
+  <text x="60" y="406" font-size="11.5" fill="#6b6f76">interpreter, and a crashing crawl cannot take the</text>
+  <text x="60" y="423" font-size="11.5" fill="#6b6f76">worker down with it.</text>
+
+  <!-- legend -->
+  <g font-size="11.5" fill="#4a4d55">
+    <line x1="40" y1="590" x2="76" y2="590" stroke="#6b6f76" stroke-width="2" marker-end="url(#arrow-gray)"/>
+    <text x="88" y="594">Request / queue traffic</text>
+    <line x1="40" y1="614" x2="76" y2="614" stroke="#f05a2a" stroke-width="2" marker-end="url(#arrow-orange)"/>
+    <text x="88" y="618">Crawl write path</text>
+    <line x1="40" y1="638" x2="76" y2="638" stroke="#f05a2a" stroke-width="2" stroke-dasharray="6 5" marker-end="url(#arrow-orange)"/>
+    <text x="88" y="642">Live progress counters</text>
+    <line x1="40" y1="662" x2="76" y2="662" stroke="#6971dd" stroke-width="2" stroke-dasharray="6 5" marker-end="url(#arrow-indigo)"/>
+    <text x="88" y="666">API reads</text>
+  </g>
+</svg>

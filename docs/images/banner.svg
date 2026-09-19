@@ -1,0 +1,75 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 300" width="1200" height="300" role="img" aria-labelledby="t d" font-family="'Segoe UI', Helvetica, Arial, sans-serif">
+  <title id="t">MyraCrawl</title>
+  <desc id="d">MyraCrawl: turn any website into structured content. Built with Scrapy, FastAPI, ARQ, Redis, MongoDB and Next.js.</desc>
+
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#f05a2a"/>
+      <stop offset="1" stop-color="#ff8a3d"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.82" cy="0.2" r="0.6">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.28"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
+    </radialGradient>
+    <clipPath id="round"><rect width="1200" height="300" rx="20"/></clipPath>
+  </defs>
+
+  <g clip-path="url(#round)">
+    <rect width="1200" height="300" fill="url(#bg)"/>
+    <rect width="1200" height="300" fill="url(#glow)"/>
+
+    <!-- site graph: one start page fanning out to the pages it links to -->
+    <g stroke="#ffffff" stroke-opacity="0.45" stroke-width="2" fill="none">
+      <line x1="950" y1="150" x2="1060" y2="90"/>
+      <line x1="950" y1="150" x2="1080" y2="170"/>
+      <line x1="950" y1="150" x2="1020" y2="235"/>
+      <line x1="950" y1="150" x2="860" y2="230"/>
+      <line x1="950" y1="150" x2="830" y2="120"/>
+      <line x1="950" y1="150" x2="930" y2="55"/>
+      <line x1="1060" y1="90" x2="1130" y2="60"/>
+      <line x1="1060" y1="90" x2="1150" y2="120"/>
+      <line x1="1080" y1="170" x2="1150" y2="212"/>
+      <line x1="1020" y1="235" x2="1088" y2="272"/>
+      <line x1="860" y1="230" x2="800" y2="272"/>
+      <line x1="830" y1="120" x2="762" y2="88"/>
+      <line x1="830" y1="120" x2="765" y2="172"/>
+      <line x1="930" y1="55" x2="860" y2="30"/>
+    </g>
+    <g fill="#ffffff">
+      <g fill-opacity="0.7">
+        <circle cx="1130" cy="60" r="6"/><circle cx="1150" cy="120" r="6"/>
+        <circle cx="1150" cy="212" r="6"/><circle cx="1088" cy="272" r="6"/>
+        <circle cx="800" cy="272" r="6"/><circle cx="762" cy="88" r="6"/>
+        <circle cx="765" cy="172" r="6"/><circle cx="860" cy="30" r="6"/>
+      </g>
+      <g fill-opacity="0.95">
+        <circle cx="1060" cy="90" r="11"/><circle cx="1080" cy="170" r="11"/>
+        <circle cx="1020" cy="235" r="11"/><circle cx="860" cy="230" r="11"/>
+        <circle cx="830" cy="120" r="11"/><circle cx="930" cy="55" r="11"/>
+      </g>
+      <circle cx="950" cy="150" r="26"/>
+    </g>
+    <circle cx="950" cy="150" r="16" fill="none" stroke="#f05a2a" stroke-width="3"/>
+    <circle cx="950" cy="150" r="6" fill="#f05a2a"/>
+
+    <!-- brand -->
+    <rect x="64" y="52" width="64" height="64" rx="18" fill="#ffffff"/>
+    <circle cx="96" cy="84" r="19" fill="none" stroke="#f05a2a" stroke-width="4"/>
+    <circle cx="96" cy="84" r="9" fill="none" stroke="#f05a2a" stroke-width="4"/>
+    <circle cx="96" cy="84" r="2.6" fill="#f05a2a"/>
+    <text x="148" y="100" font-size="46" font-weight="700" fill="#ffffff" letter-spacing="-0.5">MyraCrawl</text>
+
+    <text x="64" y="166" font-size="25" font-weight="600" fill="#ffffff">Turn any website into structured content</text>
+    <text x="64" y="194" font-size="14.5" fill="#ffffff" fill-opacity="0.9">Crawl every page, extract clean markdown, and build a profile of the company behind the site.</text>
+
+    <!-- tech chips -->
+    <g font-size="12.5" font-weight="600" fill="#ffffff" text-anchor="middle">
+      <rect x="64" y="222" width="76" height="30" rx="15" fill="#ffffff" fill-opacity="0.2" stroke="#ffffff" stroke-opacity="0.45"/><text x="102" y="241.5">Scrapy</text>
+      <rect x="150" y="222" width="82" height="30" rx="15" fill="#ffffff" fill-opacity="0.2" stroke="#ffffff" stroke-opacity="0.45"/><text x="191" y="241.5">FastAPI</text>
+      <rect x="242" y="222" width="60" height="30" rx="15" fill="#ffffff" fill-opacity="0.2" stroke="#ffffff" stroke-opacity="0.45"/><text x="272" y="241.5">ARQ</text>
+      <rect x="312" y="222" width="70" height="30" rx="15" fill="#ffffff" fill-opacity="0.2" stroke="#ffffff" stroke-opacity="0.45"/><text x="347" y="241.5">Redis</text>
+      <rect x="392" y="222" width="92" height="30" rx="15" fill="#ffffff" fill-opacity="0.2" stroke="#ffffff" stroke-opacity="0.45"/><text x="438" y="241.5">MongoDB</text>
+      <rect x="494" y="222" width="86" height="30" rx="15" fill="#ffffff" fill-opacity="0.2" stroke="#ffffff" stroke-opacity="0.45"/><text x="537" y="241.5">Next.js</text>
+    </g>
+  </g>
+</svg>

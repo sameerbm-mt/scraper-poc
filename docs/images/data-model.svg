@@ -1,0 +1,90 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 590" width="1200" height="590" role="img" aria-labelledby="t d" font-family="'Segoe UI', Helvetica, Arial, sans-serif">
+  <title id="t">MyraCrawl MongoDB data model</title>
+  <desc id="d">Three collections in the mt-scrapy-crawl database. One sites document per website; many jobs per site; many pages per job. Pages are unique on job id and URL.</desc>
+  <defs><filter id="shadow" x="-5%" y="-5%" width="110%" height="120%"><feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="#1f1f22" flood-opacity="0.08"/></filter></defs>
+  <rect x="0.5" y="0.5" width="1199" height="589" rx="16" fill="#ffffff" stroke="#e6e7ec"/>
+  <rect x="40" y="28" width="32" height="32" rx="9" fill="#f05a2a"/>
+  <circle cx="56" cy="44" r="9" fill="none" stroke="#fff" stroke-width="2"/><circle cx="56" cy="44" r="4" fill="none" stroke="#fff" stroke-width="2"/><circle cx="56" cy="44" r="1.2" fill="#fff"/>
+  <text x="86" y="49" font-size="22" font-weight="700" fill="#1f1f22">Data model</text>
+  <text x="86" y="68" font-size="12.5" fill="#6b6f76">MongoDB database mt-scrapy-crawl · three collections, keyed so a re-crawl updates instead of duplicating</text>
+  <line x1="370" y1="190" x2="430" y2="190" stroke="#9a9ea8" stroke-width="2"/>
+  <text x="376" y="182" font-size="12" font-weight="700" fill="#4a4d55">1</text>
+  <text x="424" y="182" font-size="12" font-weight="700" fill="#4a4d55" text-anchor="end">N</text>
+  <line x1="760" y1="190" x2="820" y2="190" stroke="#9a9ea8" stroke-width="2"/>
+  <text x="766" y="182" font-size="12" font-weight="700" fill="#4a4d55">1</text>
+  <text x="814" y="182" font-size="12" font-weight="700" fill="#4a4d55" text-anchor="end">N</text>
+  <g filter="url(#shadow)"><rect x="40" y="112" width="330" height="440" rx="14" fill="#fff" stroke="#e2e3e8"/></g>
+  <clipPath id="clip-sites"><rect x="40" y="112" width="330" height="440" rx="14"/></clipPath>
+  <rect x="40" y="112" width="330" height="6" fill="#2f9e63" clip-path="url(#clip-sites)"/>
+  <text x="60" y="150" font-size="19" font-weight="700" fill="#1f1f22" font-family="'Cascadia Mono', Consolas, 'Courier New', monospace">sites</text>
+  <text x="60" y="170" font-size="11.5" fill="#6b6f76">one document per website</text>
+  <line x1="60" y1="184" x2="350" y2="184" stroke="#eceef2"/>
+  <text x="60" y="204" font-size="12" fill="#1f1f22" font-family="'Cascadia Mono', Consolas, 'Courier New', monospace">_id<tspan dx="8" font-size="10.5" fill="#9a9ea8" font-family="'Segoe UI', Helvetica, Arial, sans-serif">domain</tspan></text>
+  <rect x="320" y="191" width="30" height="18" rx="9" fill="#fdecea" stroke="#f3c4c0"/>
+  <text x="335" y="204" font-size="9.5" font-weight="700" fill="#b8352e" text-anchor="middle">PK</text>
+  <text x="60" y="228" font-size="12" fill="#1f1f22" font-family="'Cascadia Mono', Consolas, 'Courier New', monospace">name · lang</text>
+  <text x="60" y="252" font-size="12" fill="#1f1f22" font-family="'Cascadia Mono', Consolas, 'Courier New', monospace">description</text>
+  <text x="60" y="276" font-size="12" fill="#1f1f22" font-family="'Cascadia Mono', Consolas, 'Courier New', monospace">logo · favicon</text>
+  <text x="60" y="300" font-size="12" fill="#1f1f22" font-family="'Cascadia Mono', Consolas, 'Courier New', monospace">address · founding_date</text>
+  <text x="60" y="324" font-size="12" fill="#1f1f22" font-family="'Cascadia Mono', Consolas, 'Courier New', monospace">emails · phones<tspan dx="8" font-size="10.5" fill="#9a9ea8" font-family="'Segoe UI', Helvetica, Arial, sans-serif">string[]</tspan></text>
+  <text x="60" y="348" font-size="12" fill="#1f1f22" font-family="'Cascadia Mono', Consolas, 'Courier New', monospace">socials<tspan dx="8" font-size="10.5" fill="#9a9ea8" font-family="'Segoe UI', Helvetica, Arial, sans-serif">{network, url}[]</tspan></text>
+  <text x="60" y="372" font-size="12" fill="#1f1f22" font-family="'Cascadia Mono', Consolas, 'Courier New', monospace">services · services_count</text>
+  <text x="60" y="396" font-size="12" fill="#1f1f22" font-family="'Cascadia Mono', Consolas, 'Courier New', monospace">team · team_count</text>
+  <text x="60" y="420" font-size="12" fill="#1f1f22" font-family="'Cascadia Mono', Consolas, 'Courier New', monospace">key_pages · pages_by_type<tspan dx="8" font-size="10.5" fill="#9a9ea8" font-family="'Segoe UI', Helvetica, Arial, sans-serif">map</tspan></text>
+  <text x="60" y="444" font-size="12" fill="#1f1f22" font-family="'Cascadia Mono', Consolas, 'Courier New', monospace">page_count · total_words<tspan dx="8" font-size="10.5" fill="#9a9ea8" font-family="'Segoe UI', Helvetica, Arial, sans-serif">int</tspan></text>
+  <text x="60" y="468" font-size="12" fill="#1f1f22" font-family="'Cascadia Mono', Consolas, 'Courier New', monospace">first_seen_at · last_crawled_at</text>
+  <text x="60" y="514" font-size="11" fill="#6b6f76">Rebuilt from the site facts of each crawl,</text>
+  <text x="60" y="530" font-size="11" fill="#6b6f76">then upserted by domain.</text>
+  <g filter="url(#shadow)"><rect x="430" y="112" width="330" height="440" rx="14" fill="#fff" stroke="#e2e3e8"/></g>
+  <clipPath id="clip-jobs"><rect x="430" y="112" width="330" height="440" rx="14"/></clipPath>
+  <rect x="430" y="112" width="330" height="6" fill="#6971dd" clip-path="url(#clip-jobs)"/>
+  <text x="450" y="150" font-size="19" font-weight="700" fill="#1f1f22" font-family="'Cascadia Mono', Consolas, 'Courier New', monospace">jobs</text>
+  <text x="450" y="170" font-size="11.5" fill="#6b6f76">one document per crawl run</text>
+  <line x1="450" y1="184" x2="740" y2="184" stroke="#eceef2"/>
+  <text x="450" y="204" font-size="12" fill="#1f1f22" font-family="'Cascadia Mono', Consolas, 'Courier New', monospace">_id<tspan dx="8" font-size="10.5" fill="#9a9ea8" font-family="'Segoe UI', Helvetica, Arial, sans-serif">job id</tspan></text>
+  <rect x="710" y="191" width="30" height="18" rx="9" fill="#fdecea" stroke="#f3c4c0"/>
+  <text x="725" y="204" font-size="9.5" font-weight="700" fill="#b8352e" text-anchor="middle">PK</text>
+  <text x="450" y="228" font-size="12" fill="#1f1f22" font-family="'Cascadia Mono', Consolas, 'Courier New', monospace">site</text>
+  <rect x="710" y="215" width="30" height="18" rx="9" fill="#eef0fd" stroke="#cdd1f5"/>
+  <text x="725" y="228" font-size="9.5" font-weight="700" fill="#4d55c0" text-anchor="middle">FK</text>
+  <text x="450" y="252" font-size="12" fill="#1f1f22" font-family="'Cascadia Mono', Consolas, 'Courier New', monospace">status<tspan dx="8" font-size="10.5" fill="#9a9ea8" font-family="'Segoe UI', Helvetica, Arial, sans-serif">running | completed</tspan></text>
+  <text x="450" y="276" font-size="12" fill="#1f1f22" font-family="'Cascadia Mono', Consolas, 'Courier New', monospace">start_url</text>
+  <text x="450" y="300" font-size="12" fill="#1f1f22" font-family="'Cascadia Mono', Consolas, 'Courier New', monospace">max_pages · use_js</text>
+  <text x="450" y="324" font-size="12" fill="#1f1f22" font-family="'Cascadia Mono', Consolas, 'Courier New', monospace">created_at · started_at · finished_at</text>
+  <text x="450" y="348" font-size="12" fill="#1f1f22" font-family="'Cascadia Mono', Consolas, 'Courier New', monospace">pages_stored · page_count<tspan dx="8" font-size="10.5" fill="#9a9ea8" font-family="'Segoe UI', Helvetica, Arial, sans-serif">int</tspan></text>
+  <text x="450" y="372" font-size="12" fill="#1f1f22" font-family="'Cascadia Mono', Consolas, 'Courier New', monospace">services_count · team_count<tspan dx="8" font-size="10.5" fill="#9a9ea8" font-family="'Segoe UI', Helvetica, Arial, sans-serif">int</tspan></text>
+  <text x="450" y="396" font-size="12" fill="#1f1f22" font-family="'Cascadia Mono', Consolas, 'Courier New', monospace">pages_by_type<tspan dx="8" font-size="10.5" fill="#9a9ea8" font-family="'Segoe UI', Helvetica, Arial, sans-serif">map</tspan></text>
+  <text x="450" y="514" font-size="11" fill="#6b6f76">Opened when the spider starts, closed with</text>
+  <text x="450" y="530" font-size="11" fill="#6b6f76">the final counts when it finishes.</text>
+  <g filter="url(#shadow)"><rect x="820" y="112" width="340" height="440" rx="14" fill="#fff" stroke="#e2e3e8"/></g>
+  <clipPath id="clip-pages"><rect x="820" y="112" width="340" height="440" rx="14"/></clipPath>
+  <rect x="820" y="112" width="340" height="6" fill="#f05a2a" clip-path="url(#clip-pages)"/>
+  <text x="840" y="150" font-size="19" font-weight="700" fill="#1f1f22" font-family="'Cascadia Mono', Consolas, 'Courier New', monospace">pages</text>
+  <text x="840" y="170" font-size="11.5" fill="#6b6f76">one document per page per job</text>
+  <line x1="840" y1="184" x2="1140" y2="184" stroke="#eceef2"/>
+  <text x="840" y="204" font-size="12" fill="#1f1f22" font-family="'Cascadia Mono', Consolas, 'Courier New', monospace">job_id</text>
+  <rect x="1110" y="191" width="30" height="18" rx="9" fill="#eef0fd" stroke="#cdd1f5"/>
+  <text x="1125" y="204" font-size="9.5" font-weight="700" fill="#4d55c0" text-anchor="middle">FK</text>
+  <text x="840" y="228" font-size="12" fill="#1f1f22" font-family="'Cascadia Mono', Consolas, 'Courier New', monospace">url</text>
+  <text x="840" y="252" font-size="12" fill="#1f1f22" font-family="'Cascadia Mono', Consolas, 'Courier New', monospace">site</text>
+  <rect x="1110" y="239" width="30" height="18" rx="9" fill="#eef0fd" stroke="#cdd1f5"/>
+  <text x="1125" y="252" font-size="9.5" font-weight="700" fill="#4d55c0" text-anchor="middle">FK</text>
+  <text x="840" y="276" font-size="12" fill="#1f1f22" font-family="'Cascadia Mono', Consolas, 'Courier New', monospace">title · h1 · meta_description</text>
+  <text x="840" y="300" font-size="12" fill="#1f1f22" font-family="'Cascadia Mono', Consolas, 'Courier New', monospace">markdown<tspan dx="8" font-size="10.5" fill="#9a9ea8" font-family="'Segoe UI', Helvetica, Arial, sans-serif">full text</tspan></text>
+  <text x="840" y="324" font-size="12" fill="#1f1f22" font-family="'Cascadia Mono', Consolas, 'Courier New', monospace">word_count · content_hash</text>
+  <text x="840" y="348" font-size="12" fill="#1f1f22" font-family="'Cascadia Mono', Consolas, 'Courier New', monospace">page_type · depth · status_code</text>
+  <text x="840" y="372" font-size="12" fill="#1f1f22" font-family="'Cascadia Mono', Consolas, 'Courier New', monospace">lang · canonical_url · og_image</text>
+  <text x="840" y="396" font-size="12" fill="#1f1f22" font-family="'Cascadia Mono', Consolas, 'Courier New', monospace">links_internal · links_external</text>
+  <text x="840" y="420" font-size="12" fill="#1f1f22" font-family="'Cascadia Mono', Consolas, 'Courier New', monospace">images · extracted_by</text>
+  <text x="840" y="444" font-size="12" fill="#1f1f22" font-family="'Cascadia Mono', Consolas, 'Courier New', monospace">crawled_at · first_seen_at</text>
+  <text x="840" y="472" font-size="10" font-weight="600" fill="#9a9ea8" letter-spacing="1.4">INDEXES</text>
+  <rect x="840" y="484" width="207" height="22" rx="11" fill="#fff1ec" stroke="#f6c9b8"/>
+  <text x="943.5" y="499" font-size="10.5" font-weight="600" fill="#c8410f" text-anchor="middle" font-family="'Cascadia Mono', Consolas, 'Courier New', monospace">job_url  unique (job_id, url)</text>
+  <rect x="1055" y="484" width="47" height="22" rx="11" fill="#f7f7f9" stroke="#e2e3e8"/>
+  <text x="1078.5" y="499" font-size="10.5" font-weight="600" fill="#4a4d55" text-anchor="middle" font-family="'Cascadia Mono', Consolas, 'Courier New', monospace">site</text>
+  <rect x="840" y="510" width="98" height="22" rx="11" fill="#f7f7f9" stroke="#e2e3e8"/>
+  <text x="889.0" y="525" font-size="10.5" font-weight="600" fill="#4a4d55" text-anchor="middle" font-family="'Cascadia Mono', Consolas, 'Courier New', monospace">content_hash</text>
+  <rect x="946" y="510" width="79" height="22" rx="11" fill="#f7f7f9" stroke="#e2e3e8"/>
+  <text x="985.5" y="525" font-size="10.5" font-weight="600" fill="#4a4d55" text-anchor="middle" font-family="'Cascadia Mono', Consolas, 'Courier New', monospace">page_type</text>
+  <text x="40" y="574" font-size="11.5" fill="#6b6f76">PK primary key · FK reference to another collection · Mongo is optional: with MONGO_ENABLED=false the crawl writes only the JSONL and CSV files.</text>
+</svg>

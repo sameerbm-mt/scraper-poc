@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Loader2, Play } from "lucide-react";
+import { Globe, Loader2, Play } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -63,10 +63,10 @@ export function CrawlForm({ onSubmit, disabled }: CrawlFormProps) {
   }
 
   return (
-    <Card>
+    <Card className="border-border/70 shadow-sm">
       <CardHeader>
-        <CardTitle>Crawl a site</CardTitle>
-        <CardDescription>
+        <CardTitle className="text-lg sm:text-xl">Crawl a site</CardTitle>
+        <CardDescription className="text-pretty">
           Follows every internal link from the start URL to the end of the site
           and extracts each page as markdown.
         </CardDescription>
@@ -75,15 +75,20 @@ export function CrawlForm({ onSubmit, disabled }: CrawlFormProps) {
         <form onSubmit={handleSubmit} className="grid gap-5" noValidate>
           <div className="grid gap-2">
             <Label htmlFor="url">Start URL</Label>
-            <Input
-              id="url"
-              value={url}
-              onChange={(event) => setUrl(event.target.value)}
-              placeholder="https://example.com"
-              aria-invalid={Boolean(errors.url)}
-              aria-describedby={errors.url ? "url-error" : undefined}
-              autoComplete="url"
-            />
+            <div className="relative">
+              <Globe className="text-muted-foreground pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2" />
+              <Input
+                id="url"
+                value={url}
+                onChange={(event) => setUrl(event.target.value)}
+                placeholder="https://example.com"
+                aria-invalid={Boolean(errors.url)}
+                aria-describedby={errors.url ? "url-error" : undefined}
+                autoComplete="url"
+                inputMode="url"
+                className="h-11 pl-9 text-base sm:text-sm"
+              />
+            </div>
             {errors.url ? (
               <p id="url-error" className="text-destructive text-sm">
                 {errors.url}
@@ -91,20 +96,29 @@ export function CrawlForm({ onSubmit, disabled }: CrawlFormProps) {
             ) : null}
           </div>
 
-          <div className="grid gap-2">
-            <Label htmlFor="use-js">Render JS</Label>
-            <div className="flex h-9 items-center gap-2">
+          {/* Stacks on phones; switch and button share a row from sm up. */}
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-center gap-3">
               <Switch id="use-js" checked={useJs} onCheckedChange={setUseJs} />
-              <span className="text-muted-foreground text-sm">
-                {useJs
-                  ? "Playwright — slower, for JS-rendered sites"
-                  : "Plain HTTP"}
-              </span>
+              <Label
+                htmlFor="use-js"
+                className="cursor-pointer font-normal leading-tight"
+              >
+                <span className="block text-sm font-medium">Render JS</span>
+                <span className="text-muted-foreground block text-xs">
+                  {useJs
+                    ? "Playwright — slower, for JS-rendered sites"
+                    : "Plain HTTP"}
+                </span>
+              </Label>
             </div>
-          </div>
 
-          <div>
-            <Button type="submit" disabled={disabled}>
+            <Button
+              type="submit"
+              size="lg"
+              disabled={disabled}
+              className="h-11 w-full sm:w-auto"
+            >
               {disabled ? (
                 <Loader2 className="animate-spin" />
               ) : (

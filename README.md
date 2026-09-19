@@ -1,31 +1,97 @@
-# Website scraping POC
+<p align="center">
+  <img src="docs/images/banner.svg" alt="MyraCrawl — turn any website into structured content" width="100%">
+</p>
 
-Crawls a site, extracts every page as markdown, builds a profile of the company
-behind it, and serves the results through an API and a small web UI. This is the
-crawling slice of `myra-ai-engine` only — there are no embeddings, no Qdrant, no
-RAG and no auth. The Next.js app talks to FastAPI directly.
+<p align="center">
+  <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-f05a2a.svg"></a>
+  <img alt="Python 3.11+" src="https://img.shields.io/badge/python-3.11%2B-3776ab.svg">
+  <img alt="Node 20+" src="https://img.shields.io/badge/node-20%2B-339933.svg">
+  <img alt="Scrapy" src="https://img.shields.io/badge/crawler-Scrapy-60a839.svg">
+  <img alt="Status: proof of concept" src="https://img.shields.io/badge/status-proof%20of%20concept-6971dd.svg">
+</p>
 
-```
-Next.js (:3000)  ──HTTP──▶  FastAPI (:8000)  ──enqueue──▶  Redis  ──▶  ARQ worker
-                                                                          │
-                                                                    subprocess
-                                                                          ▼
-                                                                 scrapy crawl site
-                                                                          │
-        extract ▶ archive ▶ dedupe ▶ jsonl ▶ csv ▶ mongo ▶ progress
-                                        │              │
-                                        ▼              ▼
-              backend/data/{site}/{job_id}/    MongoDB mt-scrapy-crawl
-                  pages.jsonl + pages.csv      pages / sites / jobs
-```
+# MyraCrawl — website scraping POC
+
+MyraCrawl crawls a website, extracts every page as clean markdown, builds a
+profile of the company behind it (services, people, contact details), and serves
+the results through a REST API and a small web UI.
+
+This is the crawling slice of `myra-ai-engine` only — there are no embeddings, no
+Qdrant, no RAG and no auth. The Next.js app talks to FastAPI directly.
+
+## Contents
+
+- [Screenshots](#screenshots)
+- [Architecture](#architecture)
+- [Prerequisites](#prerequisites)
+- [Setup](#setup)
+- [Running](#running)
+- [Configuration](#configuration)
+- [API](#api)
+- [Where the data goes](#where-the-data-goes)
+- [What gets extracted, and how](#what-gets-extracted-and-how)
+- [How the crawl behaves](#how-the-crawl-behaves)
+- [Tests](#tests)
+- [Project layout](#project-layout)
+- [Troubleshooting](#troubleshooting)
+- [Known limits](#known-limits)
+- [License](#license)
+
+## Screenshots
+
+Enter a URL and start a crawl. While the job runs, the status card shows a live
+elapsed timer and a page counter that moves as pages land.
+
+![Job status while a crawl is running](docs/images/ui-running.png)
+
+When the crawl finishes, the **JSONL** and **CSV** download buttons appear, along
+with the site profile the crawl built and the full results table.
+
+![Completed job with download buttons and the site profile](docs/images/ui-profile.png)
+
+![Results table](docs/images/ui-table.png)
+
+Select a row to read the extracted markdown for that page.
+
+![Page detail with extracted markdown](docs/images/ui-page-detail.png)
+
+<details>
+<summary>Start page</summary>
+
+![Start page](docs/images/ui-home.png)
+
+</details>
+
+## Architecture
+
+![MyraCrawl system architecture](docs/images/architecture.svg)
+
+| Component | Role |
+| --- | --- |
+| **Next.js UI** (`:3000`) | Start a crawl, poll job status every 2 s, browse results and the site profile, download exports |
+| **FastAPI** (`:8000`) | Validates requests, enqueues jobs, and serves job status, results, exports and site profiles |
+| **Redis** (`:6379`) | The ARQ job queue, plus one hash per job holding its status and live counters (7-day TTL) |
+| **ARQ worker** | Picks up `run_crawl`, launches Scrapy, and marks the job running / completed / failed |
+| **Scrapy** | Crawls the site and runs each page through the item pipelines |
+| **Local disk** | `pages.jsonl` and `pages.csv` per job — the source of truth for results and exports |
+| **MongoDB** (optional) | Queryable `pages`, `sites` and `jobs` collections that accumulate across crawls |
 
 Scrapy runs as a **subprocess**, not inside the worker: the Twisted reactor is
-not restartable, so a second in-process crawl would fail.
+not restartable, so a second in-process crawl would fail. A subprocess also keeps
+a crashing crawl from taking the worker down.
+
+### The crawl pipeline
+
+Every HTML page becomes one `PageItem`, which passes through seven Scrapy item
+pipelines in order. The first three can drop it; the last four write it out.
+
+![Crawl pipeline](docs/images/pipeline.svg)
 
 ## Prerequisites
 
 - Python 3.11+
 - [uv](https://docs.astral.sh/uv/) — `curl -LsSf https://astral.sh/uv/install.sh | sh`
+  (Windows: `powershell -c "irm https://astral.sh/uv/install.ps1 | iex"`)
 - Node.js 20+
 - Redis 7+, via Docker or locally
 - MongoDB 7+ reachable at `MONGO_URL` (optional — see `MONGO_ENABLED`)
@@ -39,8 +105,8 @@ cd scraper-poc
 docker compose up -d
 ```
 
-No Docker? Any local Redis works — `brew install redis && brew services start redis`.
-Point `REDIS_URL` at whichever you use.
+No Docker? Any local Redis works — `brew install redis && brew services start redis`
+on macOS, or a Redis for Windows build. Point `REDIS_URL` at whichever you use.
 
 MongoDB is not in the compose file — it is expected to already exist at
 `MONGO_URL`. Set `MONGO_ENABLED=false` to run without it.
@@ -49,7 +115,7 @@ MongoDB is not in the compose file — it is expected to already exist at
 
 ```bash
 cd backend
-cp .env.example .env
+cp .env.example .env                 # PowerShell: Copy-Item .env.example .env
 uv sync
 uv run playwright install chromium   # only needed for "Render JS" crawls
 ```
@@ -58,7 +124,7 @@ uv run playwright install chromium   # only needed for "Render JS" crawls
 
 ```bash
 cd frontend
-cp .env.example .env.local
+cp .env.example .env.local           # PowerShell: Copy-Item .env.example .env.local
 npm install
 ```
 
@@ -70,17 +136,24 @@ Three processes, one per terminal, all from `scraper-poc/`:
 # API      → http://localhost:8000  (docs at /docs)
 cd backend && uv run uvicorn app.main:app --reload --port 8000
 
-# Worker
+# Worker   — required: without it every job stays "queued"
 cd backend && uv run arq worker.worker.WorkerSettings
 
 # UI       → http://localhost:3000
 cd frontend && npm run dev
 ```
 
-Open <http://localhost:3000>, enter a URL, and start a crawl. The status card
-polls every 2s; results stream into the table while the job runs. When it
-finishes, a site profile card shows what the crawl learned about the company.
-Click a row for the markdown preview, or use **JSONL** / **CSV** to download.
+Open <http://localhost:3000>, enter a URL, and start a crawl.
+
+- The status card polls every 2 s. **Pages crawled** and **Pages failed** update
+  on each poll, and **Elapsed** ticks every second while the job runs.
+- **JSONL** and **CSV** downloads, the results table and the site profile card
+  appear once the job has finished, so the files you download are complete.
+- Click a row for the markdown preview.
+
+The UI tracks the job you started in the current tab. Refreshing the page starts
+from a blank state; the job itself keeps running and is still reachable through
+the API.
 
 ## Configuration
 
@@ -112,6 +185,8 @@ The crawl target is never hardcoded — it comes from the form, the API body, or
 
 ## API
 
+Interactive docs are served at <http://localhost:8000/docs>.
+
 | Method | Path | Description |
 | --- | --- | --- |
 | `POST` | `/api/crawl` | `{url, max_pages?, use_js?}` → `{job_id}` (202). `max_pages` defaults to 0 = whole site |
@@ -122,6 +197,8 @@ The crawl target is never hardcoded — it comes from the form, the API body, or
 | `GET` | `/api/jobs/{job_id}/site` | The site profile for this job's website |
 | `GET` | `/api/sites/{domain}` | The site profile by domain |
 | `GET` | `/health` | Liveness |
+
+A job's `status` moves `queued` → `running` → `completed` or `failed`.
 
 ```bash
 curl -X POST localhost:8000/api/crawl \
@@ -184,6 +261,8 @@ cell are flattened so naive readers do not mis-split rows.
 
 Database `mt-scrapy-crawl` (`MONGO_URL`, `MONGO_DB`), three collections:
 
+![MongoDB data model](docs/images/data-model.svg)
+
 | Collection | Key | Contents |
 | --- | --- | --- |
 | `pages` | `(job_id, url)` unique | Every crawled page, markdown included, one doc per page per job |
@@ -241,6 +320,12 @@ with the JSONL and CSV intact. Set `MONGO_ENABLED=false` to skip it entirely.
 Site-level extraction only runs on pages that plausibly carry these facts
 (`SITE_FACT_PAGE_TYPES`), so blog posts do not pay the cost.
 
+The markdown itself comes from a fallback ladder in `crawler/content.py`:
+Trafilatura in markdown mode, Trafilatura in text mode, the page's main
+container, and finally the whole page. Trafilatura returns nothing at all on some
+templates even when the article is plainly in the HTML, so the ladder keeps such
+pages instead of losing them.
+
 ### Crawl scope
 
 **There is no depth limit.** Every internal link is followed until the site runs
@@ -248,7 +333,8 @@ out of them; `depth` is recorded on each page as information only. A crawl of
 myratechnolabs.com reaches depth 6, and one of multiqos.com reaches depth 38.
 
 `max_pages` defaults to `0`, meaning the whole site. `CRAWL_PAGE_CEILING`
-(10,000) still applies as a backstop so a crawl trap cannot run forever.
+(10,000) still applies as a backstop so a crawl trap cannot run forever. The web
+form always crawls the whole site; use the API (or the smoke test) to set a cap.
 
 **Archive listings are followed but not stored.** `/tag/…`, `/category/…`,
 `/author/…`, `/page/2/` and friends exist to link to posts, not to be read. On
@@ -276,7 +362,7 @@ posts low, archives lowest.
   enforces the limit on what actually gets stored.
 - **Duplicate content is dropped** by sha256 of the markdown, within a job.
 - **Throttling**: `AUTOTHROTTLE_ENABLED`, 4 concurrent requests per domain,
-  0.5s delay, 2 retries.
+  0.5 s delay, 2 retries.
 
 `use_js` routes requests through scrapy-playwright. The handler is registered
 always but defers to the plain HTTP handler unless a request carries
@@ -297,26 +383,31 @@ crawl priority, structured fields) and the extractors (page classification,
 contacts, phone normalisation, services, team from both JSON-LD and markup,
 organisation, and the site profile merge).
 
+The frontend is checked with `npm run lint` and `npx tsc --noEmit`.
+
 ### Smoke test
 
-Needs the API and worker running.
+Needs the API **and the worker** running.
 
 ```bash
 cd backend
 uv run python scripts/smoke_test.py --url https://myratechnolabs.com/ --max-pages 0
-uv run python scripts/smoke_test.py --url https://example.com --max-pages 10
+uv run python scripts/smoke_test.py --url https://example.com --max-pages 10 --min-pages 1
 uv run python scripts/smoke_test.py --use-js                 # via Playwright
 ```
 
-It posts a crawl, polls to completion, then asserts the page count, unique
-hashes, non-empty markdown on every page, depth limits and the export, and
-prints a summary table.
+It posts a crawl, polls to completion, then asserts that the job completed, the
+page count is at least `--min-pages` (default 10) and within `--max-pages`, every
+content hash is unique, every page has words and non-empty markdown, and the
+JSONL export matches the results count. It finishes by printing a summary table.
 
-## Layout
+## Project layout
 
 ```
 scraper-poc/
+├── LICENSE                     # MIT
 ├── docker-compose.yml          # redis only
+├── docs/images/                # README diagrams and screenshots
 ├── backend/
 │   ├── app/                    # FastAPI: main, api/routes, schemas, config,
 │   │                           #   job_store (Redis), mongo (reads), urls
@@ -329,11 +420,34 @@ scraper-poc/
 │   └── tests/
 └── frontend/                   # Next.js App Router + shadcn/ui
     └── src/
-        ├── app/page.tsx        # the single page
+        ├── app/page.tsx        # the single page: polling and state
         ├── components/         # crawl-form, job-status-card, site-profile-card,
-        │                       #   results-table, page-detail-sheet
+        │                       #   results-table, page-detail-sheet, site-header
         └── lib/api.ts          # typed API client
 ```
+
+## Troubleshooting
+
+**The job stays on "queued" and nothing crawls.** The ARQ worker is not running.
+The API only enqueues the job; the worker is what runs it. Start it with
+`uv run arq worker.worker.WorkerSettings` from `backend/`. The status card shows
+a hint after 15 s in the queue.
+
+**The job says "running" but the counters never move.** The worker was probably
+stopped mid-crawl. Its Redis record stays `running` until the 7-day TTL expires;
+start a new crawl.
+
+**"Cannot reach the API at http://localhost:8000".** The API is not running, or
+`NEXT_PUBLIC_API_URL` points somewhere else. If the browser reports a CORS error
+instead, add the UI's origin to `CORS_ORIGINS`.
+
+**"Crawl produced no pages".** The crawl exited cleanly but stored nothing: the
+site blocked the user agent, `robots.txt` disallows the start URL, or every page
+extracted empty. The error on the job carries the tail of Scrapy's log.
+
+**Mongo warnings in the worker log.** Expected if MongoDB is unreachable. The
+crawl still completes with the JSONL and CSV; set `MONGO_ENABLED=false` to
+silence them.
 
 ## Known limits
 
@@ -344,6 +458,7 @@ This is a POC, so a few things are deliberately simple:
   the `pages` collection is already indexed for it when that matters.
 - Job records live in Redis with a 7-day TTL; the files and Mongo documents are
   never cleaned up, so a job's Redis record can expire while its data remains.
+- Nothing detects a worker that died mid-crawl, so that job stays `running`.
 - Team extraction is heuristic. It reads schema.org reliably and common card
   markup well, but an unusual layout will yield nothing rather than guess.
 - A whole-site crawl of a large blog takes minutes and hits the site a few
@@ -351,3 +466,9 @@ This is a POC, so a few things are deliberately simple:
   not a background task you should fire off casually at someone else's site.
 - There is no auth, no rate limiting and no per-tenant isolation.
 - Cancelling a running job is not implemented.
+
+## License
+
+Released under the [MIT License](LICENSE). Copyright © 2026 Myra Technolabs.
+
+Third-party dependencies are covered by their own licenses.

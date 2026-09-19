@@ -1,0 +1,190 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 540" width="1200" height="540" role="img" aria-labelledby="t d" font-family="'Segoe UI', Helvetica, Arial, sans-serif">
+  <title id="t">MyraCrawl crawl pipeline</title>
+  <desc id="d">The site spider yields a page item for every HTML page. Seven item pipelines run in order: extract, archive, dedupe, JSONL, CSV, Mongo and progress. The first three can drop an item. The last four write to pages.jsonl, pages.csv, MongoDB and Redis.</desc>
+
+  <defs>
+    <filter id="shadow" x="-5%" y="-5%" width="110%" height="120%">
+      <feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="#1f1f22" flood-opacity="0.08"/>
+    </filter>
+    <marker id="arrow-gray" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M1 1 L9 5 L1 9 Z" fill="#6b6f76"/>
+    </marker>
+    <marker id="arrow-orange" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M1 1 L9 5 L1 9 Z" fill="#f05a2a"/>
+    </marker>
+    <marker id="arrow-red" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M1 1 L9 5 L1 9 Z" fill="#d6453d"/>
+    </marker>
+  </defs>
+
+  <rect x="0.5" y="0.5" width="1199" height="539" rx="16" fill="#ffffff" stroke="#e6e7ec"/>
+
+  <!-- header -->
+  <rect x="40" y="28" width="32" height="32" rx="9" fill="#f05a2a"/>
+  <circle cx="56" cy="44" r="9" fill="none" stroke="#fff" stroke-width="2"/>
+  <circle cx="56" cy="44" r="4" fill="none" stroke="#fff" stroke-width="2"/>
+  <circle cx="56" cy="44" r="1.2" fill="#fff"/>
+  <text x="86" y="49" font-size="22" font-weight="700" fill="#1f1f22">Crawl pipeline</text>
+  <text x="86" y="68" font-size="12.5" fill="#6b6f76">One PageItem per HTML page, passed through seven Scrapy item pipelines in order</text>
+
+  <!-- ============ arrows ============ -->
+  <!-- spider -> stage 1 and stage-to-stage -->
+  <g stroke="#6b6f76" stroke-width="2" marker-end="url(#arrow-gray)">
+    <line x1="192" y1="215" x2="213" y2="215"/>
+    <line x1="337" y1="215" x2="347" y2="215"/>
+    <line x1="471" y1="215" x2="481" y2="215"/>
+    <line x1="605" y1="215" x2="615" y2="215"/>
+    <line x1="739" y1="215" x2="749" y2="215"/>
+    <line x1="873" y1="215" x2="883" y2="215"/>
+    <line x1="1007" y1="215" x2="1017" y2="215"/>
+  </g>
+
+  <!-- drops (stages 1-3) -->
+  <g stroke="#d6453d" stroke-width="2" stroke-dasharray="5 4" marker-end="url(#arrow-red)">
+    <line x1="275" y1="302" x2="275" y2="348"/>
+    <line x1="409" y1="302" x2="409" y2="348"/>
+    <line x1="543" y1="302" x2="543" y2="348"/>
+  </g>
+
+  <!-- writes (stages 4-7) -->
+  <g stroke="#f05a2a" stroke-width="2" marker-end="url(#arrow-orange)">
+    <line x1="677" y1="302" x2="677" y2="348"/>
+    <line x1="811" y1="302" x2="811" y2="348"/>
+    <line x1="945" y1="302" x2="945" y2="348"/>
+    <line x1="1079" y1="302" x2="1079" y2="348"/>
+  </g>
+
+  <!-- ============ nodes ============ -->
+  <!-- spider -->
+  <g filter="url(#shadow)">
+    <rect x="40" y="130" width="150" height="170" rx="14" fill="#fff" stroke="#f3c2b0"/>
+  </g>
+  <circle cx="58" cy="152" r="4" fill="#f05a2a"/>
+  <text x="68" y="156" font-size="10" font-weight="600" fill="#c8410f" letter-spacing="1.2">SPIDER</text>
+  <text x="56" y="184" font-size="15" font-weight="700" fill="#1f1f22">SiteSpider</text>
+  <g font-size="10.5" fill="#6b6f76">
+    <text x="56" y="208">Yields one PageItem</text>
+    <text x="56" y="223">per HTML page and a</text>
+    <text x="56" y="238">Request per new</text>
+    <text x="56" y="253">internal link.</text>
+    <text x="56" y="276" fill="#1f1f22" font-weight="600">No depth limit.</text>
+  </g>
+
+  <!-- stage cards -->
+  <g font-size="10.5" fill="#6b6f76">
+    <!-- 1 -->
+    <g filter="url(#shadow)"><rect x="215" y="130" width="120" height="170" rx="14" fill="#fff" stroke="#e2e3e8"/></g>
+    <circle cx="237" cy="154" r="11" fill="#fff1ec" stroke="#f6c9b8"/><text x="237" y="158" font-size="11" font-weight="700" fill="#c8410f" text-anchor="middle">1</text>
+    <text x="255" y="159" font-size="14" font-weight="700" fill="#1f1f22">Extract</text>
+    <text x="229" y="192">HTML → markdown</text>
+    <text x="229" y="207">Fallback ladder:</text>
+    <text x="229" y="222">trafilatura ×2,</text>
+    <text x="229" y="237">main container,</text>
+    <text x="229" y="252">whole page.</text>
+    <rect x="229" y="270" width="92" height="20" rx="10" fill="#fdecea" stroke="#f3c4c0"/>
+    <text x="275" y="283.5" font-size="9.5" font-weight="600" fill="#b8352e" text-anchor="middle">drop if &lt; 80 chars</text>
+
+    <!-- 2 -->
+    <g filter="url(#shadow)"><rect x="349" y="130" width="120" height="170" rx="14" fill="#fff" stroke="#e2e3e8"/></g>
+    <circle cx="371" cy="154" r="11" fill="#fff1ec" stroke="#f6c9b8"/><text x="371" y="158" font-size="11" font-weight="700" fill="#c8410f" text-anchor="middle">2</text>
+    <text x="389" y="159" font-size="14" font-weight="700" fill="#1f1f22">Archive</text>
+    <text x="363" y="192">Tag, category,</text>
+    <text x="363" y="207">author and /page/N</text>
+    <text x="363" y="222">listings are still</text>
+    <text x="363" y="237">followed for links</text>
+    <text x="363" y="252">but not stored.</text>
+    <rect x="363" y="270" width="92" height="20" rx="10" fill="#fdecea" stroke="#f3c4c0"/>
+    <text x="409" y="283.5" font-size="9.5" font-weight="600" fill="#b8352e" text-anchor="middle">drop archives</text>
+
+    <!-- 3 -->
+    <g filter="url(#shadow)"><rect x="483" y="130" width="120" height="170" rx="14" fill="#fff" stroke="#e2e3e8"/></g>
+    <circle cx="505" cy="154" r="11" fill="#fff1ec" stroke="#f6c9b8"/><text x="505" y="158" font-size="11" font-weight="700" fill="#c8410f" text-anchor="middle">3</text>
+    <text x="523" y="159" font-size="14" font-weight="700" fill="#1f1f22">Dedupe</text>
+    <text x="497" y="192">sha256 of the</text>
+    <text x="497" y="207">normalised</text>
+    <text x="497" y="222">markdown. Repeats</text>
+    <text x="497" y="237">in a job are</text>
+    <text x="497" y="252">skipped.</text>
+    <rect x="497" y="270" width="92" height="20" rx="10" fill="#fdecea" stroke="#f3c4c0"/>
+    <text x="543" y="283.5" font-size="9.5" font-weight="600" fill="#b8352e" text-anchor="middle">drop duplicates</text>
+
+    <!-- 4 -->
+    <g filter="url(#shadow)"><rect x="617" y="130" width="120" height="170" rx="14" fill="#fff" stroke="#e2e3e8"/></g>
+    <circle cx="639" cy="154" r="11" fill="#fff1ec" stroke="#f6c9b8"/><text x="639" y="158" font-size="11" font-weight="700" fill="#c8410f" text-anchor="middle">4</text>
+    <text x="657" y="159" font-size="14" font-weight="700" fill="#1f1f22">JSONL</text>
+    <text x="631" y="192">Appends one line</text>
+    <text x="631" y="207">per page and</text>
+    <text x="631" y="222">flushes, so the API</text>
+    <text x="631" y="237">can serve partial</text>
+    <text x="631" y="252">results mid-crawl.</text>
+    <rect x="631" y="270" width="92" height="20" rx="10" fill="#fff1ec" stroke="#f6c9b8"/>
+    <text x="677" y="283.5" font-size="9.5" font-weight="600" fill="#c8410f" text-anchor="middle">caps at max_pages</text>
+
+    <!-- 5 -->
+    <g filter="url(#shadow)"><rect x="751" y="130" width="120" height="170" rx="14" fill="#fff" stroke="#e2e3e8"/></g>
+    <circle cx="773" cy="154" r="11" fill="#fff1ec" stroke="#f6c9b8"/><text x="773" y="158" font-size="11" font-weight="700" fill="#c8410f" text-anchor="middle">5</text>
+    <text x="791" y="159" font-size="14" font-weight="700" fill="#1f1f22">CSV</text>
+    <text x="765" y="192">Flat row per page.</text>
+    <text x="765" y="207">Markdown is left</text>
+    <text x="765" y="222">out so the file</text>
+    <text x="765" y="237">opens cleanly in</text>
+    <text x="765" y="252">a spreadsheet.</text>
+
+    <!-- 6 -->
+    <g filter="url(#shadow)"><rect x="885" y="130" width="120" height="170" rx="14" fill="#fff" stroke="#e2e3e8"/></g>
+    <circle cx="907" cy="154" r="11" fill="#fff1ec" stroke="#f6c9b8"/><text x="907" y="158" font-size="11" font-weight="700" fill="#c8410f" text-anchor="middle">6</text>
+    <text x="925" y="159" font-size="14" font-weight="700" fill="#1f1f22">Mongo</text>
+    <text x="899" y="192">Upserts each page</text>
+    <text x="899" y="207">on (job_id, url).</text>
+    <text x="899" y="222">Builds the site</text>
+    <text x="899" y="237">profile on close.</text>
+    <text x="899" y="252">Outage is not fatal.</text>
+
+    <!-- 7 -->
+    <g filter="url(#shadow)"><rect x="1019" y="130" width="120" height="170" rx="14" fill="#fff" stroke="#e2e3e8"/></g>
+    <circle cx="1041" cy="154" r="11" fill="#fff1ec" stroke="#f6c9b8"/><text x="1041" y="158" font-size="11" font-weight="700" fill="#c8410f" text-anchor="middle">7</text>
+    <text x="1059" y="159" font-size="14" font-weight="700" fill="#1f1f22">Progress</text>
+    <text x="1033" y="192">HINCRBY on the</text>
+    <text x="1033" y="207">job's pages_crawled</text>
+    <text x="1033" y="222">so the UI counter</text>
+    <text x="1033" y="237">moves live while</text>
+    <text x="1033" y="252">the crawl runs.</text>
+  </g>
+
+  <!-- drop bin (stages 1-3) -->
+  <rect x="215" y="350" width="388" height="70" rx="14" fill="#fdf3f2" stroke="#f3c4c0" stroke-dasharray="5 4"/>
+  <text x="409" y="378" font-size="13" font-weight="700" fill="#b8352e" text-anchor="middle">Dropped (DropItem)</text>
+  <text x="409" y="397" font-size="10.5" fill="#8a5551" text-anchor="middle">Nothing is stored. The page's links were already</text>
+  <text x="409" y="410" font-size="10.5" fill="#8a5551" text-anchor="middle">queued, so the crawl still reaches everything else.</text>
+
+  <!-- outputs (stages 4-7) -->
+  <g filter="url(#shadow)">
+    <rect x="617" y="350" width="120" height="70" rx="14" fill="#fff" stroke="#e2e3e8"/>
+    <rect x="751" y="350" width="120" height="70" rx="14" fill="#fff" stroke="#e2e3e8"/>
+    <rect x="885" y="350" width="120" height="70" rx="14" fill="#fff" stroke="#e2e3e8"/>
+    <rect x="1019" y="350" width="120" height="70" rx="14" fill="#fff" stroke="#e2e3e8"/>
+  </g>
+  <g text-anchor="middle">
+    <text x="677" y="378" font-size="12.5" font-weight="700" fill="#2f6299" font-family="'Cascadia Mono', Consolas, 'Courier New', monospace">pages.jsonl</text>
+    <text x="677" y="396" font-size="10.5" fill="#6b6f76">full fidelity</text>
+    <text x="677" y="409" font-size="10.5" fill="#6b6f76">incl. markdown</text>
+
+    <text x="811" y="378" font-size="12.5" font-weight="700" fill="#2f6299" font-family="'Cascadia Mono', Consolas, 'Courier New', monospace">pages.csv</text>
+    <text x="811" y="396" font-size="10.5" fill="#6b6f76">flat columns</text>
+    <text x="811" y="409" font-size="10.5" fill="#6b6f76">no markdown</text>
+
+    <text x="945" y="378" font-size="12.5" font-weight="700" fill="#217a4c">MongoDB</text>
+    <text x="945" y="396" font-size="10.5" fill="#6b6f76">pages · sites</text>
+    <text x="945" y="409" font-size="10.5" fill="#6b6f76">jobs</text>
+
+    <text x="1079" y="378" font-size="12.5" font-weight="700" fill="#b8352e">Redis</text>
+    <text x="1079" y="396" font-size="10.5" fill="#6b6f76">job hash</text>
+    <text x="1079" y="409" font-size="10.5" fill="#6b6f76">live counters</text>
+  </g>
+
+  <!-- note -->
+  <rect x="40" y="448" width="1120" height="64" rx="12" fill="#f7f7f9" stroke="#eceef2"/>
+  <text x="60" y="473" font-size="12" font-weight="700" fill="#1f1f22">Why the page cap lives in stage 4</text>
+  <text x="60" y="493" font-size="11.5" fill="#6b6f76">CLOSESPIDER_PAGECOUNT only stops the scheduler; requests already in flight still come back. Enforcing max_pages in the JSONL stage makes it a hard limit on</text>
+  <text x="60" y="507" font-size="11.5" fill="#6b6f76">what is actually stored, and because the CSV, Mongo and progress stages run after it, every output agrees on the same set of pages.</text>
+</svg>

@@ -7,6 +7,7 @@ import { CrawlForm } from "@/components/crawl-form";
 import { JobStatusCard } from "@/components/job-status-card";
 import { PageDetailSheet } from "@/components/page-detail-sheet";
 import { ResultsTable } from "@/components/results-table";
+import { SiteFooter, SiteHeader } from "@/components/site-header";
 import { SiteProfileCard } from "@/components/site-profile-card";
 import {
   ApiError,
@@ -45,7 +46,6 @@ export default function Home() {
   const [job, setJob] = useState<JobState | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [results, setResults] = useState<ResultsPage>(EMPTY_RESULTS);
-  const [resultsPage, setResultsPage] = useState(1);
   const [resultsLoading, setResultsLoading] = useState(false);
   const [profile, setProfile] = useState<SiteProfile | null>(null);
 
@@ -54,11 +54,12 @@ export default function Home() {
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState<string | null>(null);
 
-  // Lets the poller notice a status change without re-subscribing every tick.
+  // Guards the one-shot "crawl finished/failed" handling against re-renders.
   const previousStatus = useRef<string | null>(null);
 
   const jobId = job?.job_id ?? null;
   const polling = job !== null && !isTerminal(job.status);
+  const finished = job !== null && isTerminal(job.status);
 
   const loadResults = useCallback(async (id: string, page: number) => {
     setResultsLoading(true);
@@ -79,7 +80,6 @@ export default function Home() {
       const { job_id: newJobId } = await startCrawl(request);
       previousStatus.current = null;
       setResults(EMPTY_RESULTS);
-      setResultsPage(1);
       setProfile(null);
       setJob(await getJob(newJobId));
       toast.success("Crawl started", { description: request.url });
@@ -92,7 +92,8 @@ export default function Home() {
     }
   }
 
-  // Poll the job while it is queued or running.
+  // Poll the job while it is queued or running. Results are not fetched here:
+  // they load once, the moment the crawl has finished.
   useEffect(() => {
     if (!jobId || !polling) return;
 
@@ -102,10 +103,9 @@ export default function Home() {
         const next = await getJob(jobId);
         if (cancelled) return;
         setJob(next);
-
-        // Refresh the table as pages land, and once more when the job ends.
-        if (next.pages_crawled !== job?.pages_crawled || isTerminal(next.status)) {
-          void loadResults(jobId, resultsPage);
+        // The crawl just ended: fetch the first page of results.
+        if (isTerminal(next.status) && next.pages_crawled > 0) {
+          void loadResults(jobId, 1);
         }
       } catch (error) {
         if (!cancelled) {
@@ -120,7 +120,7 @@ export default function Home() {
       cancelled = true;
       clearInterval(timer);
     };
-  }, [jobId, polling, resultsPage, job?.pages_crawled, loadResults]);
+  }, [jobId, polling, loadResults]);
 
   // Announce the terminal status once.
   useEffect(() => {
@@ -143,7 +143,6 @@ export default function Home() {
 
   function handlePageChange(page: number) {
     if (!jobId) return;
-    setResultsPage(page);
     void loadResults(jobId, page);
   }
 
@@ -163,33 +162,46 @@ export default function Home() {
   }
 
   return (
-    <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-10">
-      <header className="mb-8">
-        <h1 className="text-2xl font-semibold tracking-tight">
-          Website crawler
-        </h1>
-        <p className="text-muted-foreground mt-1 text-sm">
-          Scrapy + ARQ + FastAPI. Crawls every page of a site, extracts
-          markdown, and writes JSONL + CSV per job alongside MongoDB.
-        </p>
-      </header>
+    <>
+      <SiteHeader />
 
-      <div className="grid gap-6">
-        <CrawlForm onSubmit={handleSubmit} disabled={submitting || polling} />
+      <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-8 sm:px-6 sm:py-12">
+        <section className="mb-8 max-w-2xl sm:mb-10">
+          <span className="bg-accent text-accent-foreground ring-primary/20 inline-flex items-center rounded-full px-3 py-1 text-xs font-medium ring-1">
+            Crawl · Extract · Profile
+          </span>
+          <h1 className="mt-4 text-3xl font-semibold tracking-tight text-balance sm:text-4xl lg:text-5xl">
+            Turn any website into{" "}
+            <span className="text-primary">structured content</span>
+          </h1>
+          <p className="text-muted-foreground mt-3 text-sm leading-relaxed text-pretty sm:mt-4 sm:text-base">
+            MyraCrawl follows every internal link on a site, extracts each page
+            as clean markdown, and builds a profile of the company behind it —
+            services, people, and contact details included.
+          </p>
+        </section>
 
-        {job ? (
-          <>
-            <JobStatusCard job={job} />
-            {profile ? <SiteProfileCard profile={profile} /> : null}
-            <ResultsTable
-              results={results}
-              loading={resultsLoading}
-              onSelect={handleSelect}
-              onPageChange={handlePageChange}
-            />
-          </>
-        ) : null}
-      </div>
+        <div className="grid gap-5 sm:gap-6">
+          <CrawlForm onSubmit={handleSubmit} disabled={submitting || polling} />
+
+          {job ? (
+            <>
+              <JobStatusCard job={job} />
+              {profile ? <SiteProfileCard profile={profile} /> : null}
+              {finished ? (
+                <ResultsTable
+                  results={results}
+                  loading={resultsLoading}
+                  onSelect={handleSelect}
+                  onPageChange={handlePageChange}
+                />
+              ) : null}
+            </>
+          ) : null}
+        </div>
+      </main>
+
+      <SiteFooter />
 
       <PageDetailSheet
         open={sheetOpen}
@@ -198,6 +210,6 @@ export default function Home() {
         loading={detailLoading}
         error={detailError}
       />
-    </main>
+    </>
   );
 }

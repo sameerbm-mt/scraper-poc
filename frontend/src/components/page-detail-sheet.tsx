@@ -35,7 +35,7 @@ export function PageDetailSheet({
         side="right"
         className="flex w-full flex-col gap-0 p-0 sm:max-w-2xl"
       >
-        <SheetHeader className="border-b">
+        <SheetHeader className="border-b sm:px-6">
           <SheetTitle className="pr-6 text-left">
             {detail?.title || (loading ? "Loading…" : "Page")}
           </SheetTitle>
@@ -45,7 +45,7 @@ export function PageDetailSheet({
                 href={detail.url}
                 target="_blank"
                 rel="noreferrer noopener"
-                className="hover:text-foreground inline-flex items-center gap-1 font-mono text-xs break-all underline underline-offset-4"
+                className="hover:text-foreground inline-flex items-center gap-1 font-mono text-xs break-anywhere underline underline-offset-4"
               >
                 {detail.url}
                 <ExternalLink className="size-3 shrink-0" />
@@ -56,7 +56,7 @@ export function PageDetailSheet({
           </SheetDescription>
         </SheetHeader>
 
-        <div className="flex-1 overflow-y-auto px-4 py-4">
+        <div className="flex-1 overflow-y-auto px-4 py-4 sm:px-6">
           {loading ? (
             <div className="text-muted-foreground flex items-center gap-2 text-sm">
               <Loader2 className="size-4 animate-spin" />
@@ -99,7 +99,7 @@ export function PageDetailSheet({
                 <h3 className="text-muted-foreground text-xs font-medium tracking-wide uppercase">
                   Extracted markdown
                 </h3>
-                <article className="prose-sm max-w-none text-sm leading-relaxed [&_a]:underline [&_a]:underline-offset-4 [&_blockquote]:border-l-2 [&_blockquote]:pl-3 [&_code]:bg-muted [&_code]:rounded [&_code]:px-1 [&_code]:py-0.5 [&_code]:text-xs [&_h1]:mt-4 [&_h1]:text-lg [&_h1]:font-semibold [&_h2]:mt-4 [&_h2]:text-base [&_h2]:font-semibold [&_h3]:mt-3 [&_h3]:font-semibold [&_li]:my-0.5 [&_ol]:my-2 [&_ol]:list-decimal [&_ol]:pl-5 [&_p]:my-2 [&_table]:my-2 [&_table]:block [&_table]:overflow-x-auto [&_td]:border [&_td]:px-2 [&_td]:py-1 [&_th]:border [&_th]:px-2 [&_th]:py-1 [&_ul]:my-2 [&_ul]:list-disc [&_ul]:pl-5">
+                <article className="prose-sm max-w-none text-sm leading-relaxed break-anywhere [&_a]:underline [&_a]:underline-offset-4 [&_blockquote]:border-l-2 [&_blockquote]:pl-3 [&_code]:bg-muted [&_code]:rounded [&_code]:px-1 [&_code]:py-0.5 [&_code]:text-xs [&_h1]:mt-4 [&_h1]:text-lg [&_h1]:font-semibold [&_h2]:mt-4 [&_h2]:text-base [&_h2]:font-semibold [&_h3]:mt-3 [&_h3]:font-semibold [&_li]:my-0.5 [&_ol]:my-2 [&_ol]:list-decimal [&_ol]:pl-5 [&_p]:my-2 [&_table]:my-2 [&_table]:block [&_table]:overflow-x-auto [&_td]:border [&_td]:px-2 [&_td]:py-1 [&_th]:border [&_th]:px-2 [&_th]:py-1 [&_ul]:my-2 [&_ul]:list-disc [&_ul]:pl-5">
                   <ReactMarkdown remarkPlugins={[remarkGfm]}>
                     {detail.markdown}
                   </ReactMarkdown>
