@@ -34,7 +34,6 @@ def spider():
         site = "example.com"
         start_url = "https://example.com/"
         max_pages = 0
-        max_depth = 2
         use_js = False
 
     return _Spider()

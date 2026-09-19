@@ -12,7 +12,7 @@ Next.js (:3000)  ──HTTP──▶  FastAPI (:8000)  ──enqueue──▶  R
                                                                           ▼
                                                                  scrapy crawl site
                                                                           │
-              extract ▶ dedupe ▶ jsonl ▶ csv ▶ mongo ▶ progress
+        extract ▶ archive ▶ dedupe ▶ jsonl ▶ csv ▶ mongo ▶ progress
                                         │              │
                                         ▼              ▼
               backend/data/{site}/{job_id}/    MongoDB mt-scrapy-crawl
@@ -93,9 +93,10 @@ Click a row for the markdown preview, or use **JSONL** / **CSV** to download.
 | `MONGO_DB` | `mt-scrapy-crawl` | Database name |
 | `MONGO_ENABLED` | `true` | `false` runs file-only, no database |
 | `CORS_ORIGINS` | `["http://localhost:3000"]` | JSON array of allowed origins |
-| `MAX_PAGES_LIMIT` / `MAX_DEPTH_LIMIT` | `500` / `5` | Rejected above this by the API |
-| `DEFAULT_MAX_PAGES` / `DEFAULT_MAX_DEPTH` | `50` / `2` | Used when the request omits them |
-| `JOB_TIMEOUT_SECONDS` | `900` | ARQ job timeout |
+| `DEFAULT_MAX_PAGES` | `0` | `0` crawls the whole site; a positive value caps it |
+| `CRAWL_PAGE_CEILING` | `10000` | Backstop against crawl traps, applied even at `0` |
+| `STORE_ARCHIVE_PAGES` | `false` | Keep tag/category/pagination listings |
+| `JOB_TIMEOUT_SECONDS` | `3600` | ARQ job timeout — whole-site crawls are slow |
 | `SCRAPY_LOG_LEVEL` | `INFO` | |
 | `HTTPCACHE_ENABLED` | `false` | Turn on in dev to replay crawls from disk |
 | `USER_AGENT` | `MyraCrawlPOC/0.1 …` | Sent on every request |
@@ -113,7 +114,7 @@ The crawl target is never hardcoded — it comes from the form, the API body, or
 
 | Method | Path | Description |
 | --- | --- | --- |
-| `POST` | `/api/crawl` | `{url, max_pages, max_depth, use_js}` → `{job_id}` (202) |
+| `POST` | `/api/crawl` | `{url, max_pages?, use_js?}` → `{job_id}` (202). `max_pages` defaults to 0 = whole site |
 | `GET` | `/api/jobs/{job_id}` | Status, counts, timestamps, error |
 | `GET` | `/api/jobs/{job_id}/results?page=1&size=20` | Paginated summaries, no markdown |
 | `GET` | `/api/jobs/{job_id}/results/{index}` | One page including markdown |
@@ -125,10 +126,10 @@ The crawl target is never hardcoded — it comes from the form, the API body, or
 ```bash
 curl -X POST localhost:8000/api/crawl \
   -H 'content-type: application/json' \
-  -d '{"url":"https://multiqos.com/","max_pages":25,"max_depth":2,"use_js":false}'
+  -d '{"url":"https://myratechnolabs.com/"}'
 
 # then, once it finishes
-curl localhost:8000/api/sites/multiqos.com | jq '{name, services_count, emails, phones}'
+curl localhost:8000/api/sites/myratechnolabs.com | jq '{name, services_count, emails, phones}'
 ```
 
 ## Where the data goes
@@ -240,14 +241,24 @@ with the JSONL and CSV intact. Set `MONGO_ENABLED=false` to skip it entirely.
 Site-level extraction only runs on pages that plausibly carry these facts
 (`SITE_FACT_PAGE_TYPES`), so blog posts do not pay the cost.
 
-### Crawl priority
+### Crawl scope
+
+**There is no depth limit.** Every internal link is followed until the site runs
+out of them; `depth` is recorded on each page as information only. A crawl of
+myratechnolabs.com reaches depth 6, and one of multiqos.com reaches depth 38.
+
+`max_pages` defaults to `0`, meaning the whole site. `CRAWL_PAGE_CEILING`
+(10,000) still applies as a backstop so a crawl trap cannot run forever.
+
+**Archive listings are followed but not stored.** `/tag/…`, `/category/…`,
+`/author/…`, `/page/2/` and friends exist to link to posts, not to be read. On
+myratechnolabs.com they were 350 of 495 responses; storing them buried the real
+content and, because they all render near-identical excerpt lists, they poisoned
+the dedupe set. Set `STORE_ARCHIVE_PAGES=true` to keep them.
 
 Links are queued with a priority derived from their page type
 (`PAGE_TYPE_PRIORITY`): team and about/contact rank highest, services next, blog
-posts lowest. Without this, a page cap gets spent on whichever links happen to
-appear first — usually blog posts — and `/about-us/` is never reached. On
-multiqos.com with `max_pages=25`, prioritisation moved the crawl from
-*14 blog posts and no company pages* to *about + contact + 22 service pages*.
+posts low, archives lowest.
 
 ## How the crawl behaves
 
@@ -276,13 +287,14 @@ fine without one installed.
 
 ```bash
 cd backend
-uv run pytest                 # 119 tests
+uv run pytest                 # 147 tests
 ```
 
-Covers the pipelines (`ExtractPipeline`, `DedupePipeline`, `CsvPipeline`, the
-`max_pages` cap, markdown normalisation), the spider (URL normalisation, link
-filtering, depth cut-off, crawl priority, structured fields) and the extractors
-(page classification, contacts, services, team from both JSON-LD and markup,
+Covers the pipelines (`ExtractPipeline`, `ArchivePipeline`, `DedupePipeline`,
+`CsvPipeline`, the `max_pages` cap, markdown normalisation), the extraction
+fallback ladder, the spider (URL normalisation, link filtering, no depth limit,
+crawl priority, structured fields) and the extractors (page classification,
+contacts, phone normalisation, services, team from both JSON-LD and markup,
 organisation, and the site profile merge).
 
 ### Smoke test
@@ -291,7 +303,7 @@ Needs the API and worker running.
 
 ```bash
 cd backend
-uv run python scripts/smoke_test.py --url https://multiqos.com/ --max-pages 25
+uv run python scripts/smoke_test.py --url https://myratechnolabs.com/ --max-pages 0
 uv run python scripts/smoke_test.py --url https://example.com --max-pages 10
 uv run python scripts/smoke_test.py --use-js                 # via Playwright
 ```
@@ -310,7 +322,8 @@ scraper-poc/
 │   │                           #   job_store (Redis), mongo (reads), urls
 │   ├── worker/                 # ARQ: WorkerSettings, run_crawl
 │   ├── crawler/                # Scrapy: spiders/site_spider, pipelines, items,
-│   │                           #   extractors, site_profile, mongo_store, settings
+│   │                           #   content (extraction ladder), extractors,
+│   │                           #   site_profile, mongo_store, settings
 │   ├── scripts/smoke_test.py
 │   ├── data/{site}/{job_id}/   # pages.jsonl + pages.csv
 │   └── tests/
@@ -333,5 +346,8 @@ This is a POC, so a few things are deliberately simple:
   never cleaned up, so a job's Redis record can expire while its data remains.
 - Team extraction is heuristic. It reads schema.org reliably and common card
   markup well, but an unusual layout will yield nothing rather than guess.
+- A whole-site crawl of a large blog takes minutes and hits the site a few
+  times a second. `AUTOTHROTTLE` and `DOWNLOAD_DELAY` keep it polite, but it is
+  not a background task you should fire off casually at someone else's site.
 - There is no auth, no rate limiting and no per-tenant isolation.
 - Cancelling a running job is not implemented.

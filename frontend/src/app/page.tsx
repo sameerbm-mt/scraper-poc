@@ -169,8 +169,8 @@ export default function Home() {
           Website crawler
         </h1>
         <p className="text-muted-foreground mt-1 text-sm">
-          Scrapy + ARQ + FastAPI. Crawls a site, extracts markdown, and writes
-          one JSONL file per job.
+          Scrapy + ARQ + FastAPI. Crawls every page of a site, extracts
+          markdown, and writes JSONL + CSV per job alongside MongoDB.
         </p>
       </header>
 

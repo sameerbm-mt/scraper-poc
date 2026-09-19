@@ -1,8 +1,9 @@
 """Scrapy settings.
 
-The spider is launched as a subprocess by the ARQ worker, which passes the
-per-job values (DEPTH_LIMIT, CLOSESPIDER_PAGECOUNT) with ``-s`` because Scrapy
-freezes its settings before the spider instance exists.
+The spider is launched as a subprocess by the ARQ worker, which passes
+CLOSESPIDER_PAGECOUNT with ``-s`` because Scrapy freezes its settings before the
+spider instance exists. There is deliberately no DEPTH_LIMIT: a crawl follows
+every internal link to the end of the site.
 """
 
 from __future__ import annotations

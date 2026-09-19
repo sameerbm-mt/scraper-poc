@@ -261,7 +261,6 @@ class MongoPipeline:
                 {
                     "start_url": getattr(spider, "start_url", ""),
                     "max_pages": getattr(spider, "max_pages", 0),
-                    "max_depth": getattr(spider, "max_depth", 0),
                     "use_js": getattr(spider, "use_js", False),
                 },
             )
