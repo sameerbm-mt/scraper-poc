@@ -50,6 +50,9 @@ function validate(url: string): FieldErrors {
 export function CrawlForm({ onSubmit, disabled }: CrawlFormProps) {
   const [url, setUrl] = useState("");
   const [useJs, setUseJs] = useState(false);
+  const [useSitemap, setUseSitemap] = useState(false);
+  const [downloadFiles, setDownloadFiles] = useState(false);
+  const [extractContacts, setExtractContacts] = useState(false);
   const [errors, setErrors] = useState<FieldErrors>({});
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
@@ -59,7 +62,14 @@ export function CrawlForm({ onSubmit, disabled }: CrawlFormProps) {
     if (Object.keys(found).length > 0) return;
 
     // max_pages 0 = the whole site; the API keeps the field for scripted callers.
-    await onSubmit({ url: url.trim(), max_pages: 0, use_js: useJs });
+    await onSubmit({
+      url: url.trim(),
+      max_pages: 0,
+      use_js: useJs,
+      use_sitemap: useSitemap,
+      download_files: downloadFiles,
+      extract_contacts: extractContacts,
+    });
   }
 
   return (
@@ -96,23 +106,53 @@ export function CrawlForm({ onSubmit, disabled }: CrawlFormProps) {
             ) : null}
           </div>
 
-          {/* Stacks on phones; switch and button share a row from sm up. */}
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex items-center gap-3">
-              <Switch id="use-js" checked={useJs} onCheckedChange={setUseJs} />
-              <Label
-                htmlFor="use-js"
-                className="cursor-pointer font-normal leading-tight"
-              >
-                <span className="block text-sm font-medium">Render JS</span>
-                <span className="text-muted-foreground block text-xs">
-                  {useJs
-                    ? "Playwright — slower, for JS-rendered sites"
-                    : "Plain HTTP"}
-                </span>
-              </Label>
-            </div>
+          {/* One column on phones, two from sm — four switches never fit a row. */}
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Option
+              id="use-js"
+              label="Render JS"
+              checked={useJs}
+              onChange={setUseJs}
+              hint={
+                useJs ? "Playwright — slower, for JS-rendered sites" : "Plain HTTP"
+              }
+            />
+            <Option
+              id="use-sitemap"
+              label="Use sitemap"
+              checked={useSitemap}
+              onChange={setUseSitemap}
+              hint={
+                useSitemap
+                  ? "Seed from /sitemap.xml, falling back to links"
+                  : "Discover pages by following links"
+              }
+            />
+            <Option
+              id="download-files"
+              label="Download files"
+              checked={downloadFiles}
+              onChange={setDownloadFiles}
+              hint={
+                downloadFiles
+                  ? "Fetch linked PDFs and Office docs, and extract their text"
+                  : "Document links are listed but not fetched"
+              }
+            />
+            <Option
+              id="extract-contacts"
+              label="Extract contacts"
+              checked={extractContacts}
+              onChange={setExtractContacts}
+              hint={
+                extractContacts
+                  ? "Emails, phones and addresses — personal data, see the README"
+                  : "No personal data is collected"
+              }
+            />
+          </div>
 
+          <div className="flex justify-end">
             <Button
               type="submit"
               size="lg"
@@ -130,5 +170,36 @@ export function CrawlForm({ onSubmit, disabled }: CrawlFormProps) {
         </form>
       </CardContent>
     </Card>
+  );
+}
+
+function Option({
+  id,
+  label,
+  hint,
+  checked,
+  onChange,
+}: {
+  id: string;
+  label: string;
+  hint: string;
+  checked: boolean;
+  onChange: (value: boolean) => void;
+}) {
+  return (
+    <div className="flex items-start gap-3">
+      <Switch
+        id={id}
+        checked={checked}
+        onCheckedChange={onChange}
+        className="mt-0.5"
+      />
+      <Label htmlFor={id} className="cursor-pointer leading-tight font-normal">
+        <span className="block text-sm font-medium">{label}</span>
+        <span className="text-muted-foreground block text-xs text-pretty">
+          {hint}
+        </span>
+      </Label>
+    </div>
   );
 }

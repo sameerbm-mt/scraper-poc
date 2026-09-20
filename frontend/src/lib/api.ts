@@ -3,13 +3,28 @@
 export const API_URL =
   process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
-export type JobStatus = "queued" | "running" | "completed" | "failed";
+export type JobStatus =
+  | "queued"
+  | "running"
+  /** The API has accepted a pause; the worker is still stopping Scrapy. */
+  | "pausing"
+  | "paused"
+  | "resuming"
+  | "completed"
+  | "failed"
+  | "cancelled";
 
 export interface CrawlRequest {
   url: string;
   /** 0 crawls the entire site. */
   max_pages: number;
   use_js: boolean;
+  /** Seed the frontier from the site's sitemap instead of following links. */
+  use_sitemap?: boolean;
+  /** Download linked pdf/docx/xlsx/pptx and extract their text. */
+  download_files?: boolean;
+  /** Collect emails, phones, socials and addresses. Personal data — opt in. */
+  extract_contacts?: boolean;
 }
 
 export interface CrawlResponse {
@@ -23,12 +38,46 @@ export interface JobState {
   site: string;
   max_pages: number;
   use_js: boolean;
+  use_sitemap: boolean;
+  download_files: boolean;
+  extract_contacts: boolean;
   pages_crawled: number;
   pages_failed: number;
+  documents_downloaded: number;
   created_at: string | null;
   started_at: string | null;
   finished_at: string | null;
   error: string | null;
+  /** OS pid of the Scrapy subprocess while it runs. */
+  pid: number | null;
+  paused_at: string | null;
+  resumed_at: string | null;
+  resume_count: number;
+  jobdir_path: string;
+}
+
+/** Aggregates over a job's stored pages. */
+export interface JobStats {
+  pages_crawled: number;
+  pages_failed: number;
+  documents_downloaded: number;
+  /** schema.org type -> how many pages carried it, most common first. */
+  schema_types: Record<string, number>;
+  avg_response_time_ms: number;
+  total_words: number;
+  faqs_found: number;
+  products_found: number;
+}
+
+/** One downloaded document and its extracted text. */
+export interface DocumentRecord {
+  source_url: string;
+  filename: string;
+  page_count: number;
+  markdown: string;
+  content_hash: string;
+  size_bytes: number;
+  ext: string;
 }
 
 export interface SocialLink {
@@ -97,10 +146,85 @@ export interface PageSummary {
   crawled_at: string;
 }
 
+export interface Heading {
+  level: number;
+  text: string;
+}
+
+export interface LinkRef {
+  url: string;
+  anchor: string;
+}
+
+export interface ImageRef {
+  src: string;
+  alt: string;
+}
+
+export interface VideoRef {
+  type: "youtube" | "vimeo" | "file";
+  url: string;
+  video_id: string;
+}
+
+export interface DocumentLink {
+  url: string;
+  ext: string;
+}
+
+export interface Faq {
+  question: string;
+  answer: string;
+}
+
+export interface Product {
+  name: string;
+  sku: string;
+  price: string;
+  currency: string;
+  availability: string;
+}
+
+export interface SocialRef {
+  platform: string;
+  url: string;
+}
+
 export interface PageDetail extends PageSummary {
   meta_description: string;
   h1: string;
   markdown: string;
+
+  headings: Heading[];
+  lang: string;
+
+  meta_robots: string;
+  canonical_url: string;
+  og: Record<string, string>;
+  twitter: Record<string, string>;
+  hreflang: { lang: string; url: string }[];
+
+  jsonld: Record<string, unknown>[];
+  schema_types: string[];
+  faqs: Faq[];
+  products: Product[];
+
+  internal_links_count: number;
+  external_links: LinkRef[];
+  images: ImageRef[];
+  videos: VideoRef[];
+  document_links: DocumentLink[];
+
+  emails: string[];
+  phones: string[];
+  social_links: SocialRef[];
+  addresses: string[];
+
+  redirect_chain: string[];
+  response_time_ms: number;
+  content_type: string;
+  page_size_bytes: number;
+  page_type: string;
 }
 
 export interface ResultsPage {
@@ -227,8 +351,59 @@ export function getSiteProfile(domain: string): Promise<SiteProfile> {
   return request<SiteProfile>(`/api/sites/${encodeURIComponent(domain)}`);
 }
 
-export const TERMINAL_STATUSES: readonly JobStatus[] = ["completed", "failed"];
+/** Ask the worker to stop a running crawl, keeping its place. */
+export function pauseJob(jobId: string): Promise<JobState> {
+  return request<JobState>(`/api/jobs/${jobId}/pause`, { method: "POST" });
+}
+
+/** Re-queue a paused crawl against the same jobdir. */
+export function resumeJob(jobId: string): Promise<JobState> {
+  return request<JobState>(`/api/jobs/${jobId}/resume`, { method: "POST" });
+}
+
+/** Stop a crawl for good. Whatever it already wrote stays readable. */
+export function cancelJob(jobId: string): Promise<JobState> {
+  return request<JobState>(`/api/jobs/${jobId}/cancel`, { method: "POST" });
+}
+
+export function getStats(jobId: string): Promise<JobStats> {
+  return request<JobStats>(`/api/jobs/${jobId}/stats`);
+}
+
+/** Downloaded documents. Extracted text is omitted unless `includeText`. */
+export function getDocuments(
+  jobId: string,
+  includeText = false,
+): Promise<DocumentRecord[]> {
+  return request<DocumentRecord[]>(
+    `/api/jobs/${jobId}/documents?include_text=${includeText}`,
+  );
+}
+
+/** Nothing more will happen to a job in one of these, so polling stops. */
+export const TERMINAL_STATUSES: readonly JobStatus[] = [
+  "completed",
+  "failed",
+  "cancelled",
+];
 
 export function isTerminal(status: JobStatus): boolean {
   return TERMINAL_STATUSES.includes(status);
+}
+
+/** Paused is not terminal, but nothing moves until someone resumes it. */
+export function isSettled(status: JobStatus): boolean {
+  return isTerminal(status) || status === "paused";
+}
+
+export function canPause(status: JobStatus): boolean {
+  return status === "running";
+}
+
+export function canResume(status: JobStatus): boolean {
+  return status === "paused";
+}
+
+export function canCancel(status: JobStatus): boolean {
+  return status === "running" || status === "pausing" || status === "paused";
 }

@@ -7,8 +7,14 @@ const VARIANT: Record<
 > = {
   queued: "outline",
   running: "secondary",
+  // The in-between states read as "something is happening", like running.
+  pausing: "secondary",
+  paused: "outline",
+  resuming: "secondary",
   completed: "default",
   failed: "destructive",
+  // Cancelling is a decision, not a fault — it should not look like an error.
+  cancelled: "outline",
 };
 
 export function StatusBadge({ status }: { status: JobStatus }) {

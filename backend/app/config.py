@@ -45,6 +45,15 @@ class Settings(BaseSettings):
     # not stored. Set true to keep them.
     store_archive_pages: bool = False
 
+    # How long a paused crawl gets to shut down cleanly before it is killed.
+    # This matters more than it looks: Scrapy only writes the queue count into
+    # JOBDIR while closing, so a crawl that overruns its grace loses the
+    # frontier and the "resume" silently becomes a restart.
+    pause_grace_seconds: float = 30.0
+    # Render JS needs far longer. Playwright closes every browser context before
+    # Scrapy can finish, which on a real crawl does not fit in 30s.
+    pause_grace_seconds_js: float = 180.0
+
     # ARQ / Scrapy. A whole-site crawl takes far longer than a capped one.
     job_timeout_seconds: int = 3600
     job_ttl_seconds: int = 60 * 60 * 24 * 7
@@ -66,6 +75,22 @@ class Settings(BaseSettings):
 
     def job_csv_path(self, site: str, job_id: str) -> Path:
         return self.job_data_dir(site, job_id) / "pages.csv"
+
+    def job_jobdir_path(self, site: str, job_id: str) -> Path:
+        """Scrapy's JOBDIR: the persisted request queue that makes resume exact.
+
+        Scrapy writes its pending requests and seen-URL set here on a graceful
+        shutdown, and reads them back when the same spider is relaunched with
+        the same directory.
+        """
+        return self.job_data_dir(site, job_id) / "jobdir"
+
+    def job_files_dir(self, site: str, job_id: str) -> Path:
+        """FILES_STORE for this job's downloaded documents."""
+        return self.job_data_dir(site, job_id) / "files"
+
+    def job_documents_path(self, site: str, job_id: str) -> Path:
+        return self.job_data_dir(site, job_id) / "documents.jsonl"
 
     def job_paths_for_url(self, url: str, job_id: str) -> tuple[Path, Path]:
         """(jsonl, csv) for a job, with the site folder derived from its URL."""

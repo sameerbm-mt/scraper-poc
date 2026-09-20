@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import Enum
-from typing import Annotated
+from typing import Annotated, Any
 from urllib.parse import urlparse
 
 from pydantic import BaseModel, Field, field_validator
@@ -17,8 +17,21 @@ _settings = get_settings()
 class JobStatus(str, Enum):
     queued = "queued"
     running = "running"
+    # `pausing`/`resuming` are the in-between states: the API has accepted the
+    # request and the worker has not finished acting on it yet.
+    pausing = "pausing"
+    paused = "paused"
+    resuming = "resuming"
     completed = "completed"
     failed = "failed"
+    cancelled = "cancelled"
+
+
+# A job in one of these is finished: nothing more will happen to it, and the UI
+# stops polling.
+TERMINAL_STATUSES: frozenset[JobStatus] = frozenset(
+    {JobStatus.completed, JobStatus.failed, JobStatus.cancelled}
+)
 
 
 class CrawlRequest(BaseModel):
@@ -30,6 +43,13 @@ class CrawlRequest(BaseModel):
         _settings.default_max_pages
     )
     use_js: bool = False
+    # Seed the frontier from the site's own sitemap instead of following links.
+    use_sitemap: bool = False
+    # Download linked pdf/docx/xlsx/pptx and extract their text.
+    download_files: bool = False
+    # Collect emails, phones, socials and postal addresses. Off by default:
+    # this is personal data (see the GDPR/DPDP note in the README).
+    extract_contacts: bool = False
 
     @field_validator("url")
     @classmethod
@@ -61,12 +81,25 @@ class JobState(BaseModel):
     site: str = ""
     max_pages: int
     use_js: bool
+    use_sitemap: bool = False
+    download_files: bool = False
+    extract_contacts: bool = False
     pages_crawled: int = 0
     pages_failed: int = 0
+    documents_downloaded: int = 0
     created_at: datetime | None = None
     started_at: datetime | None = None
     finished_at: datetime | None = None
     error: str | None = None
+
+    # -- pause / resume
+    # OS pid of the Scrapy subprocess, so the worker can signal it.
+    pid: int | None = None
+    paused_at: datetime | None = None
+    resumed_at: datetime | None = None
+    resume_count: int = 0
+    # Scrapy's JOBDIR: the persisted request queue that makes resume exact.
+    jobdir_path: str = ""
 
 
 class PageSummary(BaseModel):
@@ -82,12 +115,79 @@ class PageSummary(BaseModel):
     crawled_at: str = ""
 
 
+class Heading(BaseModel):
+    level: int
+    text: str
+
+
 class PageDetail(PageSummary):
     """A crawled page including its markdown body (detail view)."""
 
     meta_description: str = ""
     h1: str = ""
     markdown: str = ""
+
+    # -- content structure
+    headings: list[Heading] = []
+    lang: str = ""
+
+    # -- SEO / meta
+    meta_robots: str = ""
+    canonical_url: str = ""
+    og: dict[str, str] = {}
+    twitter: dict[str, str] = {}
+    hreflang: list[dict[str, str]] = []
+
+    # -- structured data
+    jsonld: list[dict[str, Any]] = []
+    schema_types: list[str] = []
+    faqs: list[dict[str, str]] = []
+    products: list[dict[str, str]] = []
+
+    # -- links & media
+    internal_links_count: int = 0
+    external_links: list[dict[str, str]] = []
+    images: list[dict[str, str]] = []
+    videos: list[dict[str, str]] = []
+    document_links: list[dict[str, str]] = []
+
+    # -- contacts (empty unless the job set extract_contacts)
+    emails: list[str] = []
+    phones: list[str] = []
+    social_links: list[dict[str, str]] = []
+    addresses: list[str] = []
+
+    # -- technical
+    redirect_chain: list[str] = []
+    response_time_ms: int = 0
+    content_type: str = ""
+    page_size_bytes: int = 0
+    page_type: str = ""
+
+
+class DocumentRecord(BaseModel):
+    """One row of documents.jsonl: a downloaded file and its extracted text."""
+
+    source_url: str
+    filename: str
+    page_count: int = 0
+    markdown: str = ""
+    content_hash: str = ""
+    size_bytes: int = 0
+    ext: str = ""
+
+
+class JobStats(BaseModel):
+    """Body of GET /api/jobs/{job_id}/stats — the numbers the UI card shows."""
+
+    pages_crawled: int = 0
+    pages_failed: int = 0
+    documents_downloaded: int = 0
+    schema_types: dict[str, int] = {}
+    avg_response_time_ms: int = 0
+    total_words: int = 0
+    faqs_found: int = 0
+    products_found: int = 0
 
 
 class ResultsPage(BaseModel):

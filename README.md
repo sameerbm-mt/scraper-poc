@@ -29,6 +29,8 @@ Qdrant, no RAG and no auth. The Next.js app talks to FastAPI directly.
 - [Configuration](#configuration)
 - [API](#api)
 - [Where the data goes](#where-the-data-goes)
+- [Crawl options](#crawl-options)
+- [Pause, resume and cancel](#pause-resume-and-cancel)
 - [What gets extracted, and how](#what-gets-extracted-and-how)
 - [How the crawl behaves](#how-the-crawl-behaves)
 - [Tests](#tests)
@@ -188,6 +190,8 @@ the ones from earlier sessions.
 | `CRAWL_PAGE_CEILING` | `10000` | Backstop against crawl traps, applied even at `0` |
 | `STORE_ARCHIVE_PAGES` | `false` | Keep tag/category/pagination listings |
 | `JOB_TIMEOUT_SECONDS` | `3600` | ARQ job timeout — whole-site crawls are slow |
+| `PAUSE_GRACE_SECONDS` | `30` | How long a paused crawl gets to flush its queue before it is killed |
+| `PAUSE_GRACE_SECONDS_JS` | `180` | The same for a Render JS crawl, which shuts down far more slowly |
 | `SCRAPY_LOG_LEVEL` | `INFO` | |
 | `HTTPCACHE_ENABLED` | `false` | Turn on in dev to replay crawls from disk |
 | `USER_AGENT` | `MyraCrawlPOC/0.1 …` | Sent on every request |
@@ -207,8 +211,13 @@ Interactive docs are served at <http://localhost:8000/docs>.
 
 | Method | Path | Description |
 | --- | --- | --- |
-| `POST` | `/api/crawl` | `{url, max_pages?, use_js?}` → `{job_id}` (202). `max_pages` defaults to 0 = whole site |
-| `GET` | `/api/jobs/{job_id}` | Status, counts, timestamps, error |
+| `POST` | `/api/crawl` | `{url, max_pages?, use_js?, use_sitemap?, download_files?, extract_contacts?}` → `{job_id}` (202). `max_pages` defaults to 0 = whole site |
+| `GET` | `/api/jobs/{job_id}` | Status, counts, timestamps, error, pause/resume state |
+| `POST` | `/api/jobs/{job_id}/pause` | Stop a `running` crawl, keeping its place. 409 from any other state |
+| `POST` | `/api/jobs/{job_id}/resume` | Re-queue a `paused` crawl against the same jobdir. 409 otherwise |
+| `POST` | `/api/jobs/{job_id}/cancel` | Stop for good, keeping partial output. Valid from `running`, `pausing` or `paused` |
+| `GET` | `/api/jobs/{job_id}/stats` | Page/document counts, schema types, average response time |
+| `GET` | `/api/jobs/{job_id}/documents?include_text=false` | Downloaded documents and their extracted text |
 | `GET` | `/api/jobs/{job_id}/results?page=1&size=20` | Paginated summaries, no markdown |
 | `GET` | `/api/jobs/{job_id}/results/{index}` | One page including markdown |
 | `GET` | `/api/jobs/{job_id}/export?format=jsonl\|csv` | Downloads the JSONL or CSV |
@@ -218,7 +227,23 @@ Interactive docs are served at <http://localhost:8000/docs>.
 | `GET` | `/api/sites/{domain}` | The site profile by domain (needs MongoDB) |
 | `GET` | `/health` | Liveness |
 
-A job's `status` moves `queued` → `running` → `completed` or `failed`.
+### Job status
+
+```
+queued → running → completed | failed
+            ↕
+      pausing → paused → resuming → running
+            ↘         ↘
+          cancelled  cancelled
+```
+
+`pausing` and `resuming` are the in-between states: the API has accepted the
+request and the worker has not finished acting on it yet. `completed`, `failed`
+and `cancelled` are terminal — the UI stops polling there. A `paused` job is not
+terminal; nothing moves until someone resumes or cancels it.
+
+An invalid transition is a **409** naming the state the job is actually in, e.g.
+`Job is completed; only a running job can be paused.`
 
 `/api/sites` and `/api/sites/{domain}/jobs` are built from `backend/data/`, so
 they need neither MongoDB nor a live Redis record. A job whose Redis record has
@@ -247,9 +272,16 @@ URL's domain, so every crawl of a site collects under one folder:
 backend/data/
 └── multiqos.com/
     └── bea06cf36a8c4b0e8721ed0589713b88/
-        ├── pages.jsonl
-        └── pages.csv
+        ├── pages.jsonl        # one JSON object per crawled page (appended)
+        ├── pages.csv          # the same rows, flattened, no markdown
+        ├── documents.jsonl    # downloaded files + extracted text (download_files)
+        ├── files/             # the downloaded files themselves
+        └── jobdir/            # Scrapy's saved queue; only while paused
 ```
+
+`jobdir/` exists only between a pause and a resume — it is removed when the job
+completes or is cancelled. `documents.jsonl` and `files/` appear only for a job
+that ran with `download_files`.
 
 One JSON object per line:
 
@@ -320,6 +352,73 @@ the homepage, about page and contact page:
 Mongo being unreachable is **not** fatal: the crawl logs the error and finishes
 with the JSONL and CSV intact. Set `MONGO_ENABLED=false` to skip it entirely.
 
+## Crawl options
+
+Four switches on the crawl form, all off by default and all accepted by
+`POST /api/crawl`:
+
+| Flag | What it does |
+| --- | --- |
+| `use_js` | Renders the page with Playwright first. Slower, and needed for sites that return 403 to a plain HTTP client |
+| `use_sitemap` | Seeds the frontier from the site's own sitemap — `robots.txt` first, then the well-known paths — instead of following links. Falls back to link-following when no usable sitemap exists |
+| `download_files` | Fetches linked `pdf`/`docx`/`xlsx`/`pptx` and extracts their text into `documents.jsonl`. Capped at 50 files and 20 MB each |
+| `extract_contacts` | Collects emails, phones, social profiles and postal addresses. **Off by default on purpose — see below** |
+
+### Personal data
+
+`extract_contacts` collects **personal data**, which is regulated under the
+**GDPR** (EU/UK) and India's **DPDP Act**. Turning it on makes you responsible
+for having a lawful basis to collect it, for storing only what you actually
+need, and for deleting it when that purpose ends.
+
+The crawler takes two deliberate positions here:
+
+- It is **opt-in per job**. A crawl that does not ask for contacts stores none,
+  and the fields stay empty on every page record.
+- **Addresses come from declared JSON-LD `PostalAddress` only** — never from a
+  regex over the page text. An address-shaped regex produces a stream of false
+  positives, and every false positive is personal data you did not need and
+  cannot justify holding.
+
+Contacts are written to `pages.jsonl` and to MongoDB like any other field, so a
+deletion request means deleting the job folder and the matching Mongo documents.
+
+## Pause, resume and cancel
+
+A running crawl can be paused and picked up later from exactly where it stopped.
+
+Scrapy is given a `JOBDIR` (`data/{site}/{job_id}/jobdir`), where it persists its
+pending request queue, the seen-URL set and the spider state. The mechanics:
+
+- **Pause** is a *graceful* shutdown, not a kill. Scrapy only writes its queue to
+  `JOBDIR` while closing cleanly, so the worker signals it and waits — `SIGTERM`
+  on POSIX, and on Windows a `CTRL_BREAK_EVENT` to the child's own process group,
+  which arrives as `SIGBREAK` (a signal Scrapy handles alongside `SIGTERM`).
+  `Popen.terminate()` is deliberately **not** used on Windows: it maps to
+  `TerminateProcess`, the equivalent of `SIGKILL`, and skips the flush entirely.
+- After the grace period (`PAUSE_GRACE_SECONDS`, or `PAUSE_GRACE_SECONDS_JS` for
+  a Render JS crawl) the process is killed as a last resort. A killed pause is
+  logged as a warning, because the frontier it leaves behind may be incomplete.
+- **Resume** re-queues the same job against the same jobdir, which is never
+  cleared. The worker logs how many requests it picked up.
+- **Cancel** stops the crawl and deletes the jobdir. Partial output stays exactly
+  where it is and remains readable through the API.
+
+Two things make a resume safe rather than merely possible:
+
+- `pages.jsonl` is **appended**, never truncated, so a resumed run adds to the
+  same file.
+- `DedupePipeline` loads the content hashes already in `pages.jsonl` on startup,
+  and `JsonLinesPipeline` counts the rows already there against `max_pages`.
+  Without the first, a resume would re-emit every page the earlier run had
+  queued but not finished; without the second, it would be granted a fresh
+  allowance of `max_pages` on top of what it already had.
+
+Why the API never signals the process itself: the worker is the only thing
+holding the subprocess handle. `POST /api/jobs/{id}/pause` writes a request into
+`job:{id}:control` in Redis, and the worker — which polls that key once a second
+— is what acts on it.
+
 ## What gets extracted, and how
 
 `crawler/extractors.py` runs heuristics over each page:
@@ -327,8 +426,24 @@ with the JSONL and CSV intact. Set `MONGO_ENABLED=false` to skip it entirely.
 - **Page type** — `home`, `about`, `team`, `contact`, `careers`, `services`,
   `portfolio`, `blog`, `legal`, `pricing`, `other`, from the URL path first and
   the headings as a fallback.
-- **Metadata** — canonical URL, `lang`, Open Graph and Twitter tags, favicon,
-  robots directive.
+- **Metadata** — canonical URL, `lang` (the page's own `<html lang>`, or
+  detected with py3langid when it has none), Open Graph and Twitter tags as
+  nested objects, `hreflang` alternates, favicon, robots directive.
+- **Headings** — `[{level, text}]` for `h1`–`h3` in document order, so the
+  outline survives extraction.
+- **Structured data** — every `application/ld+json` block, flattened out of
+  `@graph`, plus the `schema_types` found on the page. `FAQPage` questions
+  become `faqs: [{question, answer}]` and `Product` blocks become
+  `products: [{name, sku, price, currency, availability}]` — the two shapes a
+  chatbot can answer from directly. Parsed with `extruct`; malformed JSON-LD
+  never stops a crawl, and one broken block does not discard the good ones on
+  the same page.
+- **Links and media** — internal link count, external links with their anchor
+  text, images (skipping `data:` URIs, tracking pixels and anything the markup
+  declares smaller than 100px), videos from YouTube/Vimeo embeds and `<video>`,
+  and document links by extension.
+- **Technical** — status code, depth, redirect chain, response time, content
+  type, page size, crawl timestamp.
 - **Contacts** — emails and phones from `mailto:`/`tel:` links and page text,
   plus social profiles across 13 networks. Phone numbers are normalised and
   length-checked so tracking junk does not get through.
@@ -392,13 +507,20 @@ posts low, archives lowest.
 `use_js` routes requests through scrapy-playwright. The handler is registered
 always but defers to the plain HTTP handler unless a request carries
 `meta={"playwright": True}`, so non-JS crawls never launch a browser and work
-fine without one installed.
+fine without one installed. JS crawls do need it: run
+`uv run playwright install chromium` once (see [Setup](#setup)).
+
+On Windows scrapy-playwright runs Playwright on its own event loop in a
+background thread. Its shutdown leaves cancelled-task errors in the log on every
+crawl, so `crawler/playwright_shutdown.py` replaces that one method with a clean
+version. Delete the module and its call in `crawler/settings.py` once upstream
+fixes it; a test reports when that happens.
 
 ## Tests
 
 ```bash
 cd backend
-uv run pytest                 # 168 tests
+uv run pytest                 # 183 tests
 ```
 
 Covers the pipelines (`ExtractPipeline`, `ArchivePipeline`, `DedupePipeline`,
@@ -408,7 +530,9 @@ crawl priority, structured fields), the extractors (page classification,
 contacts, phone normalisation, services, team from both JSON-LD and markup,
 organisation, and the site profile merge), and the on-disk catalog behind the
 sites pages (scanning, path-traversal rejection, stats from CSV or JSONL, and
-the routes' fallback for jobs Redis has forgotten).
+the routes' fallback for jobs Redis has forgotten), how a failed crawl is
+reported (a missing Playwright browser is named, and the message keeps its
+first line), and a clean shutdown of scrapy-playwright's loop thread.
 
 The frontend is checked with `npm run lint` and `npx tsc --noEmit`.
 
@@ -439,10 +563,17 @@ scraper-poc/
 │   ├── app/                    # FastAPI: main, api/routes, schemas, config,
 │   │                           #   job_store (Redis), mongo (reads), urls,
 │   │                           #   catalog (scans data/ for the sites pages)
-│   ├── worker/                 # ARQ: WorkerSettings, run_crawl
+│   ├── worker/                 # ARQ: WorkerSettings, run_crawl, failure (readable errors),
+│   │                           #   control (graceful stop, cross-platform signals)
 │   ├── crawler/                # Scrapy: spiders/site_spider, pipelines, items,
 │   │                           #   content (extraction ladder), extractors,
-│   │                           #   site_profile, mongo_store, settings
+│   │                           #   structured (JSON-LD/FAQ/Product via extruct),
+│   │                           #   seo (headings, meta, language), assets (links,
+│   │                           #   images, videos, document links),
+│   │                           #   documents (file download + text extraction),
+│   │                           #   sitemap (discovery and parsing),
+│   │                           #   site_profile, mongo_store, settings,
+│   │                           #   playwright_shutdown (quiet loop-thread exit)
 │   ├── scripts/smoke_test.py
 │   ├── data/{site}/{job_id}/   # pages.jsonl + pages.csv
 │   └── tests/
@@ -470,6 +601,12 @@ start a new crawl.
 **"Cannot reach the API at http://localhost:8000".** The API is not running, or
 `NEXT_PUBLIC_API_URL` points somewhere else. If the browser reports a CORS error
 instead, add the UI's origin to `CORS_ORIGINS`.
+
+**A Render JS crawl fails at once with "Crawl produced no pages".** Playwright's
+browser was never downloaded, so every JS request fails. The job's error leads
+with the fix: run `uv run playwright install chromium` in `backend/` once, then
+start the crawl again. Plain crawls never need it. The worker does not need a
+restart, since each crawl is a fresh Scrapy process.
 
 **A new page or endpoint returns 404 (for example `/api/sites`).** The API process
 is still running old code. Restart `uvicorn`; on Windows, `--reload` can miss a

@@ -299,8 +299,9 @@ class TestSpiderStructuredFields:
         item = next(r for r in spider.parse(response) if isinstance(r, PageItem))
 
         assert item.page_type == "about"
-        assert item.links_internal > 0
-        assert item.links_external > 0
+        assert item.internal_links_count > 0
+        assert item.external_links
+        assert all({"url", "anchor"} <= set(link) for link in item.external_links)
 
     def test_site_facts_only_gathered_on_profile_pages(self, fixture_html):
         spider = SiteSpider(job_id="j1", start_url="https://example.com")

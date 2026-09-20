@@ -16,8 +16,12 @@ if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
 from app.config import get_settings  # noqa: E402
+from crawler import playwright_shutdown  # noqa: E402
 
 _settings = get_settings()
+
+# scrapy-playwright's loop thread leaves error noise behind at exit; see the module.
+playwright_shutdown.install()
 
 BOT_NAME = "crawler"
 SPIDER_MODULES = ["crawler.spiders"]
@@ -49,6 +53,9 @@ ITEM_PIPELINES = {
     "crawler.pipelines.ExtractPipeline": 100,
     "crawler.pipelines.ArchivePipeline": 150,
     "crawler.pipelines.DedupePipeline": 200,
+    # Fetches document_links and extracts their text; a no-op unless the job
+    # set download_files.
+    "crawler.documents.DocumentsPipeline": 250,
     # JsonLines enforces the max_pages cap, so every writer after it agrees.
     "crawler.pipelines.JsonLinesPipeline": 300,
     "crawler.pipelines.CsvPipeline": 350,

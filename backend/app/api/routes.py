@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import math
+import shutil
 import uuid
 from pathlib import Path
 from typing import Annotated, Any, Iterator
@@ -15,12 +16,16 @@ from starlette.concurrency import run_in_threadpool
 
 from app import catalog
 from app.config import Settings, get_settings
-from app.job_store import JobStore
+from app.job_store import CONTROL_CANCEL, CONTROL_PAUSE, JobStore
 from app.mongo import get_mongo
 from app.schemas import (
+    TERMINAL_STATUSES,
     CrawlRequest,
     CrawlResponse,
+    DocumentRecord,
     JobState,
+    JobStats,
+    JobStatus,
     PageDetail,
     PageSummary,
     ResultsPage,
@@ -57,21 +62,201 @@ async def start_crawl(
         url=payload.url,
         max_pages=payload.max_pages,
         use_js=payload.use_js,
+        use_sitemap=payload.use_sitemap,
+        download_files=payload.download_files,
+        extract_contacts=payload.extract_contacts,
     )
+    await _enqueue_crawl(queue, job_id, payload.url, payload, attempt=0)
+    return CrawlResponse(job_id=job_id)
+
+
+async def _enqueue_crawl(
+    queue: ArqRedis,
+    job_id: str,
+    url: str,
+    options: CrawlRequest | JobState,
+    attempt: int,
+) -> None:
+    """Hand the crawl to the worker.
+
+    `attempt` disambiguates the ARQ job id. ARQ refuses a second job with an id
+    it already knows, and it remembers finished ones for `keep_result`, so a
+    resume enqueued as `crawl:{job_id}` would be silently dropped.
+    """
     await queue.enqueue_job(
         "run_crawl",
         job_id,
-        payload.url,
-        payload.max_pages,
-        payload.use_js,
-        _job_id=f"crawl:{job_id}",
+        url,
+        options.max_pages,
+        options.use_js,
+        options.use_sitemap,
+        options.download_files,
+        options.extract_contacts,
+        _job_id=f"crawl:{job_id}:{attempt}",
     )
-    return CrawlResponse(job_id=job_id)
 
 
 @router.get("/jobs/{job_id}", response_model=JobState)
 async def get_job(job_id: str, store: JobStoreDep, settings: SettingsDep) -> JobState:
     return await _require_job(job_id, store, settings)
+
+
+@router.post("/jobs/{job_id}/pause", response_model=JobState)
+async def pause_job(
+    job_id: str, store: JobStoreDep, settings: SettingsDep
+) -> JobState:
+    """Ask a running crawl to stop gracefully, keeping its place.
+
+    The API only records the request; the worker owns the subprocess and is what
+    actually signals it. The job moves to `pausing` here and reaches `paused`
+    once Scrapy has flushed its queue to JOBDIR.
+    """
+    job = await _require_job(job_id, store, settings)
+    _require_status(job, {JobStatus.running}, "paused")
+    await store.request_control(job_id, CONTROL_PAUSE)
+    await store.mark_pausing(job_id)
+    return await _require_job(job_id, store, settings)
+
+
+@router.post("/jobs/{job_id}/resume", response_model=JobState)
+async def resume_job(
+    job_id: str, store: JobStoreDep, settings: SettingsDep, queue: QueueDep
+) -> JobState:
+    """Re-queue a paused crawl against the same JOBDIR.
+
+    The jobdir is deliberately left untouched: it holds the frontier the paused
+    run stopped on, and the new task picks up from exactly there.
+    """
+    job = await _require_job(job_id, store, settings)
+    _require_status(job, {JobStatus.paused}, "resumed")
+
+    await store.clear_control(job_id)
+    await store.mark_resuming(job_id)
+    refreshed = await _require_job(job_id, store, settings)
+    # resume_count has just been incremented, so it doubles as the attempt
+    # number that keeps each ARQ job id distinct.
+    await _enqueue_crawl(queue, job_id, job.url, job, attempt=refreshed.resume_count)
+    return refreshed
+
+
+@router.post("/jobs/{job_id}/cancel", response_model=JobState)
+async def cancel_job(
+    job_id: str, store: JobStoreDep, settings: SettingsDep
+) -> JobState:
+    """Stop a crawl for good, keeping whatever it has already written.
+
+    A running job is cancelled by the worker; a paused one has no process left,
+    so it is closed out here. Either way the partial pages.jsonl stays readable
+    and only the resume state is discarded.
+    """
+    job = await _require_job(job_id, store, settings)
+    _require_status(job, {JobStatus.running, JobStatus.paused, JobStatus.pausing}, "cancelled")
+
+    if job.status == JobStatus.paused:
+        await store.clear_control(job_id)
+        _drop_jobdir(settings, job.site, job_id)
+        await store.mark_cancelled(job_id)
+    else:
+        await store.request_control(job_id, CONTROL_CANCEL)
+    return await _require_job(job_id, store, settings)
+
+
+# The order states are listed in when a transition is refused. Lifecycle order
+# reads better than alphabetical: "running, pausing or paused".
+_STATUS_ORDER: tuple[JobStatus, ...] = (
+    JobStatus.queued,
+    JobStatus.running,
+    JobStatus.pausing,
+    JobStatus.paused,
+    JobStatus.resuming,
+    JobStatus.completed,
+    JobStatus.failed,
+    JobStatus.cancelled,
+)
+
+
+def _require_status(job: JobState, allowed: set[JobStatus], action: str) -> None:
+    """409 on an invalid transition, naming the state the job is actually in."""
+    if job.status in allowed:
+        return
+    names = [status.value for status in _STATUS_ORDER if status in allowed]
+    allowed_text = (
+        names[0] if len(names) == 1 else f"{', '.join(names[:-1])} or {names[-1]}"
+    )
+    raise HTTPException(
+        status_code=409,
+        detail=f"Job is {job.status.value}; only a {allowed_text} job can be {action}.",
+    )
+
+
+def _drop_jobdir(settings: Settings, site: str, job_id: str) -> None:
+    shutil.rmtree(settings.job_jobdir_path(site, job_id), ignore_errors=True)
+
+
+@router.get("/jobs/{job_id}/stats", response_model=JobStats)
+async def get_stats(
+    job_id: str, store: JobStoreDep, settings: SettingsDep
+) -> JobStats:
+    """Aggregates over this job's stored pages, for the UI's stats card."""
+    job = await _require_job(job_id, store, settings)
+    return await run_in_threadpool(
+        _aggregate,
+        settings.job_results_path(job.site, job_id),
+        settings.job_documents_path(job.site, job_id),
+        job,
+    )
+
+
+def _aggregate(results: Path, documents: Path, job: JobState) -> JobStats:
+    schema_counts: dict[str, int] = {}
+    pages = words = faqs = products = 0
+    response_times: list[int] = []
+
+    for _, record in _iter_records(results):
+        pages += 1
+        words += int(record.get("word_count") or 0)
+        faqs += len(record.get("faqs") or [])
+        products += len(record.get("products") or [])
+        elapsed = int(record.get("response_time_ms") or 0)
+        if elapsed > 0:
+            response_times.append(elapsed)
+        for name in record.get("schema_types") or []:
+            schema_counts[str(name)] = schema_counts.get(str(name), 0) + 1
+
+    return JobStats(
+        pages_crawled=pages or job.pages_crawled,
+        pages_failed=job.pages_failed,
+        documents_downloaded=sum(1 for _ in _iter_records(documents)),
+        # Most-seen first: that is the order the UI lists them in.
+        schema_types=dict(
+            sorted(schema_counts.items(), key=lambda kv: (-kv[1], kv[0]))
+        ),
+        avg_response_time_ms=(
+            round(sum(response_times) / len(response_times)) if response_times else 0
+        ),
+        total_words=words,
+        faqs_found=faqs,
+        products_found=products,
+    )
+
+
+@router.get("/jobs/{job_id}/documents", response_model=list[DocumentRecord])
+async def get_documents(
+    job_id: str,
+    store: JobStoreDep,
+    settings: SettingsDep,
+    include_text: Annotated[bool, Query()] = False,
+) -> list[DocumentRecord]:
+    """Documents downloaded for this job. Extracted text is opt-in: it is large."""
+    job = await _require_job(job_id, store, settings)
+    path = settings.job_documents_path(job.site, job_id)
+
+    records: list[DocumentRecord] = []
+    for _, record in _iter_records(path):
+        if not include_text:
+            record = {**record, "markdown": ""}
+        records.append(DocumentRecord.model_validate(_without_nulls(record)))
+    return records
 
 
 @router.get("/jobs/{job_id}/results", response_model=ResultsPage)
@@ -117,13 +302,22 @@ async def get_result(
 
     for current, record in _iter_records(settings.job_results_path(job.site, job_id)):
         if current == index:
-            return PageDetail(
-                **_to_summary(current, record).model_dump(),
-                meta_description=str(record.get("meta_description") or ""),
-                h1=str(record.get("h1") or ""),
-                markdown=str(record.get("markdown") or ""),
-            )
+            return _to_detail(current, record)
     raise HTTPException(status_code=404, detail="Result not found")
+
+
+def _without_nulls(record: dict[str, Any]) -> dict[str, Any]:
+    """Drop null values so the model's own defaults apply.
+
+    Records written by older crawls predate most of these fields, and a stored
+    `null` would fail validation where an absent key validates fine.
+    """
+    return {key: value for key, value in record.items() if value is not None}
+
+
+def _to_detail(index: int, record: dict[str, Any]) -> PageDetail:
+    """Validate a stored record into PageDetail, tolerating older rows."""
+    return PageDetail.model_validate({**_without_nulls(record), "index": index})
 
 
 @router.get("/jobs/{job_id}/export")

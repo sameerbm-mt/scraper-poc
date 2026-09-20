@@ -16,6 +16,7 @@ from scrapy.exceptions import DropItem
 from app.config import get_settings
 from crawler.content import extract_content
 from crawler.items import CSV_COLUMNS, PageItem
+from crawler.seo import detect_language
 from crawler.mongo_store import MongoStore
 from crawler.progress import JobProgress
 from crawler.site_profile import SiteProfileBuilder
@@ -72,6 +73,9 @@ class ExtractPipeline:
         item.word_count = len(markdown.split())
         item.content_hash = content_hash(markdown)
         item.extracted_by = strategy
+        # Detection needs the extracted prose, which only exists here. The
+        # page's own <html lang> wins when it has one.
+        item.lang = detect_language(markdown, item.lang)
         item.html = ""  # free the raw HTML as soon as we are done with it
         return item
 
@@ -91,16 +95,59 @@ class ArchivePipeline:
 
 
 class DedupePipeline:
-    """Drop pages whose markdown we have already stored in this job."""
+    """Drop pages whose markdown we have already stored in this job.
+
+    On a resumed crawl the in-memory set starts empty but pages.jsonl does not,
+    so the hashes already on disk are loaded first. Without this, resuming would
+    re-emit every page the earlier run had queued but not yet finished, and the
+    file would end up with duplicate URLs.
+    """
 
     def __init__(self) -> None:
         self._hashes: set[str] = set()
+
+    def open_spider(self, spider: Spider) -> None:
+        path = get_settings().job_results_path(_site_of(spider), _job_of(spider))
+        self._hashes = _hashes_on_disk(path)
+        if self._hashes:
+            logger.info(
+                "Resuming: %s content hashes already in %s", len(self._hashes), path.name
+            )
 
     def process_item(self, item: PageItem, spider: Spider) -> PageItem:
         if item.content_hash in self._hashes:
             raise DropItem(f"Duplicate content: {item.url}")
         self._hashes.add(item.content_hash)
         return item
+
+
+def _count_records(path: Path) -> int:
+    """Non-empty lines in pages.jsonl — how many pages a previous run stored."""
+    if not path.exists():
+        return 0
+    with path.open("r", encoding="utf-8") as handle:
+        return sum(1 for line in handle if line.strip())
+
+
+def _hashes_on_disk(path: Path) -> set[str]:
+    """Content hashes already recorded in pages.jsonl, for a resumed crawl."""
+    if not path.exists():
+        return set()
+    hashes: set[str] = set()
+    with path.open("r", encoding="utf-8") as handle:
+        for line in handle:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                record = json.loads(line)
+            except json.JSONDecodeError:
+                # A run killed mid-write leaves one ragged line; skip it.
+                continue
+            digest = record.get("content_hash")
+            if digest:
+                hashes.add(str(digest))
+    return hashes
 
 
 class JsonLinesPipeline:
@@ -123,11 +170,18 @@ class JsonLinesPipeline:
             raise ValueError("Spider must define job_id for JsonLinesPipeline")
         settings = get_settings()
         self._max_pages = int(getattr(spider, "max_pages", 0) or 0)
-        self._written = 0
         self.path = settings.job_results_path(_site_of(spider), job_id)
         self.path.parent.mkdir(parents=True, exist_ok=True)
+        # Rows already on disk count towards the cap: a resumed crawl continues
+        # towards max_pages rather than being granted a fresh allowance.
+        self._written = _count_records(self.path)
         self._handle = self.path.open("a", encoding="utf-8")
-        logger.info("Writing results to %s (max_pages=%s)", self.path, self._max_pages)
+        logger.info(
+            "Writing results to %s (max_pages=%s, %s already written)",
+            self.path,
+            self._max_pages,
+            self._written,
+        )
 
     def close_spider(self, spider: Spider) -> None:
         if self._handle is not None:

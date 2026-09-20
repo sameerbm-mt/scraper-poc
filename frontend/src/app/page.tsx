@@ -5,13 +5,17 @@ import { toast } from "sonner";
 
 import { CrawlForm } from "@/components/crawl-form";
 import { JobResults } from "@/components/job-results";
-import { JobStatusCard } from "@/components/job-status-card";
+import { JobStatsCard } from "@/components/job-stats-card";
+import { JobStatusCard, type JobAction } from "@/components/job-status-card";
 import { SiteProfileCard } from "@/components/site-profile-card";
 import {
+  cancelJob,
   errorMessage,
   getJob,
   getJobSite,
   isTerminal,
+  pauseJob,
+  resumeJob,
   startCrawl,
   type CrawlRequest,
   type JobState,
@@ -19,16 +23,29 @@ import {
 } from "@/lib/api";
 import { useJobPolling } from "@/lib/use-job-polling";
 
+const ACTIONS: Record<
+  JobAction,
+  { run: (jobId: string) => Promise<JobState>; done: string }
+> = {
+  pause: { run: pauseJob, done: "Pausing — finishing the requests in flight" },
+  resume: { run: resumeJob, done: "Resuming from the saved queue" },
+  cancel: { run: cancelJob, done: "Cancelling — partial results are kept" },
+};
+
 export default function Home() {
   const [job, setJob] = useState<JobState | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [profile, setProfile] = useState<SiteProfile | null>(null);
+  const [pending, setPending] = useState<JobAction | null>(null);
 
-  // The status whose "finished" / "failed" toast has already been shown.
+  // The status whose terminal toast has already been shown.
   const announced = useRef<string | null>(null);
 
   const polling = job !== null && !isTerminal(job.status);
   const finished = job !== null && isTerminal(job.status);
+  // Results and stats are worth showing the moment there is anything to show,
+  // not only at the end: a paused or cancelled crawl has real output too.
+  const hasOutput = job !== null && job.pages_crawled > 0;
 
   function handleUpdate(next: JobState) {
     setJob(next);
@@ -41,6 +58,8 @@ export default function Home() {
       getJobSite(next.job_id)
         .then(setProfile)
         .catch(() => setProfile(null));
+    } else if (next.status === "cancelled") {
+      toast.info(`Crawl cancelled — ${next.pages_crawled} pages kept`);
     } else {
       toast.error("Crawl failed", {
         description: next.error?.split("\n")[0] ?? "See the job status for details",
@@ -48,7 +67,7 @@ export default function Home() {
     }
   }
 
-  // Poll while the job is queued or running; the results load once it finishes.
+  // Poll while the job is queued, running, pausing, paused or resuming.
   useJobPolling(job, handleUpdate);
 
   async function handleSubmit(request: CrawlRequest) {
@@ -65,6 +84,31 @@ export default function Home() {
       });
     } finally {
       setSubmitting(false);
+    }
+  }
+
+  async function handleAction(action: JobAction) {
+    if (!job) return;
+    setPending(action);
+    try {
+      const next = await ACTIONS[action].run(job.job_id);
+      // A resume re-opens the job, so the terminal toast may fire again later.
+      announced.current = null;
+      setJob(next);
+      toast.success(ACTIONS[action].done);
+    } catch (error) {
+      // A 409 here means the job moved on between the render and the click.
+      toast.error(`Could not ${action} the crawl`, {
+        description: errorMessage(error),
+      });
+      // Re-read the truth rather than leaving stale buttons on screen.
+      try {
+        setJob(await getJob(job.job_id));
+      } catch {
+        // The status card keeps what it had; polling will catch up.
+      }
+    } finally {
+      setPending(null);
     }
   }
 
@@ -90,9 +134,26 @@ export default function Home() {
 
         {job ? (
           <>
-            <JobStatusCard job={job} />
+            <JobStatusCard
+              job={job}
+              onAction={handleAction}
+              pending={pending}
+            />
+            {hasOutput ? (
+              <JobStatsCard
+                jobId={job.job_id}
+                refreshKey={job.pages_crawled}
+              />
+            ) : null}
             {profile ? <SiteProfileCard profile={profile} /> : null}
-            {finished ? <JobResults key={job.job_id} jobId={job.job_id} /> : null}
+            {hasOutput ? (
+              <JobResults
+                key={job.job_id}
+                jobId={job.job_id}
+                // Reload the table as the crawl stores more pages.
+                refreshKey={finished ? 0 : job.pages_crawled}
+              />
+            ) : null}
           </>
         ) : null}
       </div>

@@ -7,8 +7,10 @@ import { PageDetailSheet } from "@/components/page-detail-sheet";
 import { ResultsTable } from "@/components/results-table";
 import {
   errorMessage,
+  getDocuments,
   getResult,
   getResults,
+  type DocumentRecord,
   type PageDetail,
   type PageSummary,
   type ResultsPage,
@@ -26,6 +28,8 @@ const EMPTY_RESULTS: ResultsPage = {
 
 interface JobResultsProps {
   jobId: string;
+  /** Bumped while the crawl runs so the table follows along. */
+  refreshKey?: number;
 }
 
 /**
@@ -34,7 +38,7 @@ interface JobResultsProps {
  * Owns its own page number, so mount it with `key={jobId}` to start a different
  * job back on page 1.
  */
-export function JobResults({ jobId }: JobResultsProps) {
+export function JobResults({ jobId, refreshKey = 0 }: JobResultsProps) {
   const [page, setPage] = useState(1);
   // The most recent page that loaded, kept on screen while the next one loads.
   const [results, setResults] = useState<ResultsPage | null>(null);
@@ -46,6 +50,8 @@ export function JobResults({ jobId }: JobResultsProps) {
   const [detail, setDetail] = useState<PageDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState<string | null>(null);
+  // Fetched once per job: the Files tab matches a page's links against these.
+  const [documents, setDocuments] = useState<DocumentRecord[]>([]);
 
   useEffect(() => {
     let cancelled = false;
@@ -62,7 +68,20 @@ export function JobResults({ jobId }: JobResultsProps) {
     return () => {
       cancelled = true;
     };
-  }, [jobId, page]);
+  }, [jobId, page, refreshKey]);
+
+  useEffect(() => {
+    let cancelled = false;
+    getDocuments(jobId)
+      .then((found) => {
+        if (!cancelled) setDocuments(found);
+      })
+      // A job that downloaded nothing simply has no documents.jsonl.
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [jobId, refreshKey]);
 
   const failed = failure?.page === page ? failure.message : null;
   const loading = results?.page !== page && !failed;
@@ -96,6 +115,7 @@ export function JobResults({ jobId }: JobResultsProps) {
         detail={detail}
         loading={detailLoading}
         error={detailError}
+        documents={documents}
       />
     </>
   );
