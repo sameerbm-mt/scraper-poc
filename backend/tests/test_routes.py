@@ -214,3 +214,52 @@ def test_a_job_with_neither_redis_nor_files_is_a_404(api):
     assert client.get(f"/api/jobs/{JOB_A}").status_code == 404
     assert client.get("/api/jobs/not-a-job-id").status_code == 404
     assert client.get(f"/api/jobs/{JOB_A}/results").status_code == 404
+
+
+class TestLegacyRecords:
+    """Records on disk outlive the schema; reading them must not 500."""
+
+    def test_images_stored_as_a_count_is_dropped(self):
+        from app.api.routes import _to_detail
+
+        # Crawls before images became a list stored the count under that name.
+        detail = _to_detail(0, {"url": "https://a.com/", "images": 78})
+
+        assert detail.images == []
+        assert detail.url == "https://a.com/"
+
+    def test_images_stored_as_a_list_is_kept(self):
+        from app.api.routes import _to_detail
+
+        detail = _to_detail(0, {"url": "https://a.com/", "images": [{"src": "a.png"}]})
+
+        assert detail.images == [{"src": "a.png"}]
+
+    def test_null_values_fall_back_to_defaults(self):
+        from app.api.routes import _to_detail
+
+        detail = _to_detail(0, {"url": "https://a.com/", "title": None, "og": None})
+
+        assert detail.title == "" and detail.og == {}
+
+    def test_scalar_where_a_dict_is_expected_is_dropped(self):
+        from app.api.routes import _to_detail
+
+        detail = _to_detail(0, {"url": "https://a.com/", "og": "not-a-dict"})
+
+        assert detail.og == {}
+
+    def test_a_record_from_an_older_crawl_validates_whole(self):
+        from app.api.routes import _to_detail
+
+        legacy = {
+            "url": "https://a.com/", "status_code": 200, "depth": 0,
+            "title": "T", "markdown": "# T", "word_count": 2,
+            "content_hash": "abc", "images": 78, "links_internal": 10,
+            "links_external": 2, "extracted_by": "trafilatura-markdown",
+        }
+        detail = _to_detail(3, legacy)
+
+        assert detail.index == 3
+        assert detail.word_count == 2
+        assert detail.images == []

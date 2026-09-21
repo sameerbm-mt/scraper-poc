@@ -6,12 +6,14 @@ import json
 import math
 import shutil
 import uuid
+from functools import lru_cache
 from pathlib import Path
-from typing import Annotated, Any, Iterator
+from typing import Annotated, Any, Iterator, get_origin
 
 from arq.connections import ArqRedis
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import FileResponse
+from pydantic import BaseModel
 from starlette.concurrency import run_in_threadpool
 
 from app import catalog
@@ -255,7 +257,7 @@ async def get_documents(
     for _, record in _iter_records(path):
         if not include_text:
             record = {**record, "markdown": ""}
-        records.append(DocumentRecord.model_validate(_without_nulls(record)))
+        records.append(DocumentRecord.model_validate(_readable(record, DocumentRecord)))
     return records
 
 
@@ -306,18 +308,37 @@ async def get_result(
     raise HTTPException(status_code=404, detail="Result not found")
 
 
-def _without_nulls(record: dict[str, Any]) -> dict[str, Any]:
-    """Drop null values so the model's own defaults apply.
+@lru_cache(maxsize=8)
+def _container_fields(model: type[BaseModel]) -> frozenset[str]:
+    """Names of `model` fields whose value has to be a list or a dict."""
+    return frozenset(
+        name
+        for name, field in model.model_fields.items()
+        if (get_origin(field.annotation) or field.annotation) in (list, dict)
+    )
 
-    Records written by older crawls predate most of these fields, and a stored
-    `null` would fail validation where an absent key validates fine.
+
+def _readable(record: dict[str, Any], model: type[BaseModel]) -> dict[str, Any]:
+    """Drop values a stored record can no longer be read with.
+
+    Files on disk outlive the schema, and two kinds of drift show up in them: a
+    stored `null` where the field is non-optional, and a scalar where the field
+    has since become a list — `images` held an image *count* before it held the
+    images themselves. Dropping either lets the field fall back to its default,
+    which is what an absent key would do, instead of failing the whole request.
     """
-    return {key: value for key, value in record.items() if value is not None}
+    containers = _container_fields(model)
+    return {
+        key: value
+        for key, value in record.items()
+        if value is not None
+        and not (key in containers and not isinstance(value, (list, dict)))
+    }
 
 
 def _to_detail(index: int, record: dict[str, Any]) -> PageDetail:
     """Validate a stored record into PageDetail, tolerating older rows."""
-    return PageDetail.model_validate({**_without_nulls(record), "index": index})
+    return PageDetail.model_validate({**_readable(record, PageDetail), "index": index})
 
 
 @router.get("/jobs/{job_id}/export")

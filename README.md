@@ -63,16 +63,10 @@ Every site MyraCrawl has crawled is listed under **Crawled sites** in the header
 (`/sites`), most recently crawled first, with its latest crawl's status, page
 count and age.
 
-![Crawled sites list](docs/images/ui-sites.png)
-
 Select a site to open `/sites/{domain}`. It shows the same job status stats as a
 live crawl, the site profile, and the full paginated **Results** for that crawl.
 When a site has been crawled more than once, each crawl is one click away, and
 `?job=<id>` in the URL links straight to a particular one.
-
-![Site page: crawl history and job status](docs/images/ui-site-status.png)
-
-![Site page: paginated results](docs/images/ui-site-results.png)
 
 <details>
 <summary>Start page</summary>
