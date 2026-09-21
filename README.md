@@ -10,7 +10,7 @@
   <img alt="Status: proof of concept" src="https://img.shields.io/badge/status-proof%20of%20concept-6971dd.svg">
 </p>
 
-# MyraCrawl — Website scraping POC
+# MyraCrawl — Website scraping
 
 MyraCrawl crawls a website, extracts every page as clean markdown, builds a
 profile of the company behind it (services, people, contact details), and serves
@@ -188,7 +188,7 @@ the ones from earlier sessions.
 | `PAUSE_GRACE_SECONDS_JS` | `180` | The same for a Render JS crawl, which shuts down far more slowly |
 | `SCRAPY_LOG_LEVEL` | `INFO` | |
 | `HTTPCACHE_ENABLED` | `false` | Turn on in dev to replay crawls from disk |
-| `USER_AGENT` | `MyraCrawlPOC/0.1 …` | Sent on every request |
+| `USER_AGENT` | `MyraCrawl/0.1 …` | Sent on every request |
 
 `frontend/.env.local` (see `frontend/.env.example`):
 
@@ -613,29 +613,6 @@ extracted empty. The error on the job carries the tail of Scrapy's log.
 **Mongo warnings in the worker log.** Expected if MongoDB is unreachable. The
 crawl still completes with the JSONL and CSV; set `MONGO_ENABLED=false` to
 silence them.
-
-## Known limits
-
-This is a POC, so a few things are deliberately simple:
-
-- The API's results endpoints scan the JSONL file per request rather than
-  querying Mongo. Fine for hundreds of pages, not for hundreds of thousands —
-  the `pages` collection is already indexed for it when that matters.
-- Job records live in Redis with a 7-day TTL; the files and Mongo documents are
-  never cleaned up. Once a record expires, the API rebuilds the job from its
-  files (and the Mongo `jobs` document, when Mongo is up), so results, exports
-  and the sites pages keep working. Two things cannot be recovered: how many
-  requests failed (`pages_failed` reads 0), and whether a crawl that stored pages
-  was interrupted — it is reported as completed. Without Mongo the page cap and
-  JS setting of an old crawl are unknown too.
-- Nothing detects a worker that died mid-crawl, so that job stays `running`.
-- Team extraction is heuristic. It reads schema.org reliably and common card
-  markup well, but an unusual layout will yield nothing rather than guess.
-- A whole-site crawl of a large blog takes minutes and hits the site a few
-  times a second. `AUTOTHROTTLE` and `DOWNLOAD_DELAY` keep it polite, but it is
-  not a background task you should fire off casually at someone else's site.
-- There is no auth, no rate limiting and no per-tenant isolation.
-- Cancelling a running job is not implemented.
 
 ## License
 
