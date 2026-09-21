@@ -10,7 +10,7 @@
   <img alt="Status: proof of concept" src="https://img.shields.io/badge/status-proof%20of%20concept-6971dd.svg">
 </p>
 
-# MyraCrawl — website scraping POC
+# MyraCrawl — Website scraping POC
 
 MyraCrawl crawls a website, extracts every page as clean markdown, builds a
 profile of the company behind it (services, people, contact details), and serves
